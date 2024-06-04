@@ -145,7 +145,7 @@ client_event_purge_days	0
 client_units_si	true
 comm_event_enable	true
 comm_event_purge_days	14
-database_version	5.54.0
+database_version	5.55.0
 detector_auto_fail_enable	true
 detector_event_purge_days	90
 detector_occ_spike_secs	60
@@ -227,21 +227,21 @@ work_request_url
 
 -- Helper function to check and update database version from migrate scripts
 CREATE FUNCTION iris.update_version(TEXT, TEXT) RETURNS TEXT AS
-	$update_version$
+    $update_version$
 DECLARE
-	ver_prev ALIAS FOR $1;
-	ver_new ALIAS FOR $2;
-	ver_db TEXT;
+    ver_prev ALIAS FOR $1;
+    ver_new ALIAS FOR $2;
+    ver_db TEXT;
 BEGIN
-	SELECT value INTO ver_db FROM iris.system_attribute
-		WHERE name = 'database_version';
-	IF ver_db != ver_prev THEN
-		RAISE EXCEPTION 'Cannot migrate database -- wrong version: %',
-			ver_db;
-	END IF;
-	UPDATE iris.system_attribute SET value = ver_new
-		WHERE name = 'database_version';
-	RETURN ver_new;
+    SELECT value INTO ver_db FROM iris.system_attribute
+        WHERE name = 'database_version';
+    IF ver_db != ver_prev THEN
+        RAISE EXCEPTION 'Cannot migrate database -- wrong version: %',
+            ver_db;
+    END IF;
+    UPDATE iris.system_attribute SET value = ver_new
+        WHERE name = 'database_version';
+    RETURN ver_new;
 END;
 $update_version$ language plpgsql;
 
@@ -249,8 +249,8 @@ $update_version$ language plpgsql;
 -- Roles, Domains, Users, Capabilities and Privileges
 --
 CREATE TABLE iris.role (
-	name VARCHAR(15) PRIMARY KEY,
-	enabled BOOLEAN NOT NULL
+    name VARCHAR(15) PRIMARY KEY,
+    enabled BOOLEAN NOT NULL
 );
 
 COPY iris.role (name, enabled) FROM stdin;
@@ -267,6 +267,10 @@ CREATE TABLE iris.domain (
     cidr VARCHAR(64) NOT NULL,
     enabled BOOLEAN NOT NULL
 );
+
+CREATE TRIGGER domain_notify_trig
+    AFTER INSERT OR UPDATE OR DELETE ON iris.domain
+    FOR EACH STATEMENT EXECUTE FUNCTION iris.table_notify();
 
 COPY iris.domain (name, cidr, enabled) FROM stdin;
 any_ipv4	0.0.0.0/0	t
@@ -301,6 +305,22 @@ CREATE TABLE iris.user_id_domain (
 );
 ALTER TABLE iris.user_id_domain ADD PRIMARY KEY (user_id, domain);
 
+CREATE FUNCTION iris.user_domain_notify() RETURNS TRIGGER AS
+    $user_domain_notify$
+BEGIN
+    IF (TG_OP = 'DELETE') THEN
+        PERFORM pg_notify('user_id', OLD.user_id);
+    ELSE
+        PERFORM pg_notify('user_id', NEW.user_id);
+    END IF;
+    RETURN NULL; -- AFTER trigger return is ignored
+END;
+$user_domain_notify$ LANGUAGE plpgsql;
+
+CREATE TRIGGER user_domain_notify_trig
+    AFTER INSERT OR DELETE ON iris.user_id_domain
+    FOR EACH ROW EXECUTE FUNCTION iris.user_domain_notify();
+
 COPY iris.user_id_domain (user_id, domain) FROM stdin;
 admin	any_ipv4
 admin	any_ipv6
@@ -308,8 +328,8 @@ admin	any_ipv6
 
 -- FIXME: remove after permissions are used everywhere
 CREATE TABLE iris.capability (
-	name VARCHAR(16) PRIMARY KEY,
-	enabled BOOLEAN NOT NULL
+    name VARCHAR(16) PRIMARY KEY,
+    enabled BOOLEAN NOT NULL
 );
 
 COPY iris.capability (name, enabled) FROM stdin;
@@ -722,8 +742,8 @@ PRV_003D	camera_tab	play_list	user_id	t
 
 -- FIXME: remove after permissions are used everywhere
 CREATE TABLE iris.role_capability (
-	role VARCHAR(15) NOT NULL REFERENCES iris.role,
-	capability VARCHAR(16) NOT NULL REFERENCES iris.capability
+    role VARCHAR(15) NOT NULL REFERENCES iris.role,
+    capability VARCHAR(16) NOT NULL REFERENCES iris.capability
 );
 ALTER TABLE iris.role_capability ADD PRIMARY KEY (role, capability);
 
@@ -794,29 +814,29 @@ operator	toll_tab
 
 -- FIXME: remove after permissions are used everywhere
 CREATE VIEW role_privilege_view AS
-	SELECT role, role_capability.capability, type_n, obj_n, group_n, attr_n,
-	       write
-	FROM iris.role
-	JOIN iris.role_capability ON role.name = role_capability.role
-	JOIN iris.capability ON role_capability.capability = capability.name
-	JOIN iris.privilege ON privilege.capability = capability.name
-	WHERE role.enabled = 't' AND capability.enabled = 't';
+    SELECT role, role_capability.capability, type_n, obj_n, group_n, attr_n,
+           write
+    FROM iris.role
+    JOIN iris.role_capability ON role.name = role_capability.role
+    JOIN iris.capability ON role_capability.capability = capability.name
+    JOIN iris.privilege ON privilege.capability = capability.name
+    WHERE role.enabled = 't' AND capability.enabled = 't';
 GRANT SELECT ON role_privilege_view TO PUBLIC;
 
 CREATE TABLE event.client_event (
-	event_id integer PRIMARY KEY DEFAULT nextval('event.event_id_seq'),
-	event_date TIMESTAMP WITH time zone NOT NULL,
-	event_desc_id integer NOT NULL
-		REFERENCES event.event_description(event_desc_id),
-	host_port VARCHAR(64) NOT NULL,
-	iris_user VARCHAR(15)
+    event_id integer PRIMARY KEY DEFAULT nextval('event.event_id_seq'),
+    event_date TIMESTAMP WITH time zone NOT NULL,
+    event_desc_id integer NOT NULL
+        REFERENCES event.event_description(event_desc_id),
+    host_port VARCHAR(64) NOT NULL,
+    iris_user VARCHAR(15)
 );
 
 CREATE VIEW client_event_view AS
-	SELECT e.event_id, e.event_date, ed.description, e.host_port,
-	       e.iris_user
-	FROM event.client_event e
-	JOIN event.event_description ed ON e.event_desc_id = ed.event_desc_id;
+    SELECT e.event_id, e.event_date, ed.description, e.host_port,
+           e.iris_user
+    FROM event.client_event e
+    JOIN event.event_description ed ON e.event_desc_id = ed.event_desc_id;
 GRANT SELECT ON client_event_view TO PUBLIC;
 
 --
@@ -1635,6 +1655,7 @@ CREATE TABLE iris.camera_template (
 	label text
 );
 
+-- FIXME: remove streamable
 CREATE TABLE iris._camera (
     name VARCHAR(20) PRIMARY KEY,
     geo_loc VARCHAR(20) REFERENCES iris.geo_loc(name),
@@ -1753,6 +1774,40 @@ CREATE VIEW camera_view AS
     LEFT JOIN geo_loc_view l ON c.geo_loc = l.name
     LEFT JOIN controller_view ctr ON c.controller = ctr.name;
 GRANT SELECT ON camera_view TO PUBLIC;
+
+CREATE VIEW iris.camera_hashtag AS
+    SELECT name AS camera, hashtag
+        FROM iris.hashtag
+        WHERE resource_n = 'camera';
+
+CREATE FUNCTION iris.camera_hashtag_insert() RETURNS TRIGGER AS
+    $camera_hashtag_insert$
+BEGIN
+    INSERT INTO iris.hashtag (resource_n, name, hashtag)
+         VALUES ('camera', NEW.camera, NEW.hashtag);
+    RETURN NEW;
+END;
+$camera_hashtag_insert$ LANGUAGE plpgsql;
+
+CREATE TRIGGER camera_hashtag_insert_trig
+    INSTEAD OF INSERT ON iris.camera_hashtag
+    FOR EACH ROW EXECUTE FUNCTION iris.camera_hashtag_insert();
+
+CREATE FUNCTION iris.camera_hashtag_delete() RETURNS TRIGGER AS
+    $camera_hashtag_delete$
+BEGIN
+    DELETE FROM iris.hashtag WHERE resource_n = 'camera' AND name = OLD.camera;
+    IF FOUND THEN
+        RETURN OLD;
+    ELSE
+        RETURN NULL;
+    END IF;
+END;
+$camera_hashtag_delete$ LANGUAGE plpgsql;
+
+CREATE TRIGGER camera_hashtag_delete_trig
+    INSTEAD OF DELETE ON iris.camera_hashtag
+    FOR EACH ROW EXECUTE FUNCTION iris.camera_hashtag_delete();
 
 CREATE TABLE iris._cam_sequence (
     seq_num INTEGER PRIMARY KEY
@@ -2766,22 +2821,22 @@ ALTER FUNCTION iris.multi_tags_str(INTEGER)
     SET search_path = pg_catalog, pg_temp;
 
 CREATE TABLE iris.sign_detail (
-	name VARCHAR(12) PRIMARY KEY,
-	dms_type INTEGER NOT NULL REFERENCES iris.dms_type,
-	portable BOOLEAN NOT NULL,
-	technology VARCHAR(12) NOT NULL,
-	sign_access VARCHAR(12) NOT NULL,
-	legend VARCHAR(12) NOT NULL,
-	beacon_type VARCHAR(32) NOT NULL,
-	hardware_make VARCHAR(32) NOT NULL,
-	hardware_model VARCHAR(32) NOT NULL,
-	software_make VARCHAR(32) NOT NULL,
-	software_model VARCHAR(32) NOT NULL,
-	supported_tags INTEGER NOT NULL,
-	max_pages INTEGER NOT NULL,
-	max_multi_len INTEGER NOT NULL,
-	beacon_activation_flag BOOLEAN NOT NULL,
-	pixel_service_flag BOOLEAN NOT NULL
+    name VARCHAR(12) PRIMARY KEY,
+    dms_type INTEGER NOT NULL REFERENCES iris.dms_type,
+    portable BOOLEAN NOT NULL,
+    technology VARCHAR(12) NOT NULL,
+    sign_access VARCHAR(12) NOT NULL,
+    legend VARCHAR(12) NOT NULL,
+    beacon_type VARCHAR(32) NOT NULL,
+    hardware_make VARCHAR(32) NOT NULL,
+    hardware_model VARCHAR(32) NOT NULL,
+    software_make VARCHAR(32) NOT NULL,
+    software_model VARCHAR(32) NOT NULL,
+    supported_tags INTEGER NOT NULL,
+    max_pages INTEGER NOT NULL,
+    max_multi_len INTEGER NOT NULL,
+    beacon_activation_flag BOOLEAN NOT NULL,
+    pixel_service_flag BOOLEAN NOT NULL
 );
 
 CREATE TRIGGER sign_detail_notify_trig
@@ -2863,8 +2918,8 @@ CREATE TRIGGER word_notify_trig
     FOR EACH STATEMENT EXECUTE FUNCTION iris.table_notify();
 
 CREATE VIEW word_view AS
-	SELECT name, abbr, allowed
-	FROM iris.word;
+    SELECT name, abbr, allowed
+    FROM iris.word;
 GRANT SELECT ON word_view TO PUBLIC;
 
 COPY iris.word (name, abbr, allowed) FROM stdin;
