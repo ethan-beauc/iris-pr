@@ -25,6 +25,10 @@ version = "1.0"
 default-features = false
 features = ["fs", "io-util", "macros", "net", "rt-multi-thread", "time"]
 
+[workspace.dependencies.cidr]
+version = "0.2"
+features = ["serde"]
+
 [patch.crates-io]
 
 [profile.web]

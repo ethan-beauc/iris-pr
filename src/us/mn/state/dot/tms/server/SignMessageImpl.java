@@ -21,7 +21,6 @@ import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
 import us.mn.state.dot.sched.DebugLog;
-import us.mn.state.dot.sonar.NamespaceError;
 import us.mn.state.dot.sonar.SonarException;
 import us.mn.state.dot.tms.DMSHelper;
 import us.mn.state.dot.tms.SignConfig;
@@ -30,7 +29,6 @@ import us.mn.state.dot.tms.SignMessage;
 import us.mn.state.dot.tms.SignMessageHelper;
 import us.mn.state.dot.tms.SignMsgPriority;
 import us.mn.state.dot.tms.TMSException;
-import us.mn.state.dot.tms.utils.HexString;
 import static us.mn.state.dot.tms.server.XmlWriter.createAttribute;
 
 /**
@@ -45,14 +43,12 @@ public class SignMessageImpl extends BaseObjectImpl implements SignMessage {
 	/** Sign msg debug log */
 	static private final DebugLog MSG_LOG = new DebugLog("sign_msg");
 
-	/** Create a unique sign message name */
-	static private String createUniqueName(SignConfig sc, String inc,
-		String ms, String owner, boolean fb, SignMsgPriority mp,
-		Integer dur)
+	/** Make a sign message name */
+	static private String makeName(SignConfig sc, String inc, String ms,
+		String owner, boolean fb, SignMsgPriority mp, Integer dur)
 	{
-		int hash = SignMessageHelper.hash(sc, inc, ms, owner, fb, mp,
-			dur);
-		return "sys_" + HexString.format(hash, 8);
+		return "sys_" + SignMessageHelper.makeHash(sc, inc, ms,
+			owner, fb, mp, dur);
 	}
 
 	/** Find or create a sign message.
@@ -70,10 +66,25 @@ public class SignMessageImpl extends BaseObjectImpl implements SignMessage {
 	{
 		if (sc == null)
 			return null;
-		SignMessage esm = SignMessageHelper.find(sc, inc, ms, owner,
-			fb, mp, dur);
-		if (esm != null)
+		String nm = makeName(sc, inc, ms, owner, fb, mp, dur);
+		SignMessage esm = SignMessageHelper.lookup(nm);
+		if (esm != null) {
+			if (!objectEquals(sc, esm.getSignConfig()))
+				System.err.println("SignMessageImpl.sc: " + sc);
+			if (!objectEquals(inc, esm.getIncident()))
+				System.err.println("SignMessageImpl.inc: " + sc);
+			if (!ms.equals(esm.getMulti()))
+				System.err.println("SignMessageImpl.ms: " + ms);
+			if (!objectEquals(owner, esm.getMsgOwner()))
+				System.err.println("SignMessageImpl.owner: " + owner);
+			if (fb != esm.getFlashBeacon())
+				System.err.println("SignMessageImpl.fb: " + fb);
+			if (mp.ordinal() != esm.getMsgPriority())
+				System.err.println("SignMessageImpl.mp: " + mp);
+			if (!objectEquals(dur, esm.getDuration()))
+				System.err.println("SignMessageImpl.dur: " + dur);
 			return esm;
+		}
 		// no matching message found, create it
 		SignMessageImpl sm = new SignMessageImpl(sc, inc, ms, owner,
 			fb, mp, dur);
@@ -81,25 +92,9 @@ public class SignMessageImpl extends BaseObjectImpl implements SignMessage {
 			sm.notifyCreate();
 			return sm;
 		}
-		catch (NamespaceError e) {
-			System.err.println("SignMessageImpl: (" + ms + ")");
-			System.err.println("findOrCreate NamespaceError: " +
-				e.getMessage());
-			// Probably a "Name already exists" error
-			// How does this happen?  We just checked and didn't
-			// find the message.  Let's try one more time!
-			esm = SignMessageHelper.find(sc, inc, ms, owner, fb,
-				mp, dur);
-			if (esm != null)
-				System.err.println("found: " + esm.getName());
-			else
-				System.err.println("still not found -- WTF!");
-			return esm;
-		}
 		catch (SonarException e) {
 			System.err.println("SignMessageImpl: (" + ms + ")");
-			System.err.println("findOrCreate SonarException: " +
-				e.getMessage());
+			System.err.println("findOrCreate: " + e.getMessage());
 			// This can pretty much only happen when the SONAR task
 			// processor does not store the sign message within 30
 			// seconds.  It *shouldn't* happen, but there may be
@@ -185,7 +180,7 @@ public class SignMessageImpl extends BaseObjectImpl implements SignMessage {
 	private SignMessageImpl(SignConfig sc, String inc, String ms,
 		String owner, boolean fb, SignMsgPriority mp, Integer dur)
 	{
-		super(createUniqueName(sc, inc, ms, owner, fb, mp, dur));
+		super(makeName(sc, inc, ms, owner, fb, mp, dur));
 		sign_config = sc;
 		incident = inc;
 		multi = ms;
