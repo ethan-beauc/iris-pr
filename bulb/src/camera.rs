@@ -10,7 +10,7 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 //
-use crate::card::{inactive_attr, Card, View, EDIT_BUTTON, LOC_BUTTON};
+use crate::card::{inactive_attr, Card, View};
 use crate::device::{Device, DeviceAnc};
 use crate::util::{ContainsLower, Fields, HtmlStr, Input, OptVal};
 use resources::Res;
@@ -55,45 +55,39 @@ impl Camera {
         )
     }
 
-    /// Convert to Status HTML
-    fn to_html_status(&self, anc: &CameraAnc, config: bool) -> String {
+    /// Convert to Control HTML
+    fn to_html_control(&self) -> String {
+        let title = self.title(View::Control);
         let location = HtmlStr::new(&self.location).with_len(64);
-        let mut status = format!(
-            "<div class='row'>\
+        format!(
+            "{title}\
+            <div class='row'>\
               <span class='info'>{location}</span>\
             </div>"
-        );
-        if config {
-            status.push_str("<div class='row'>");
-            status.push_str(&anc.controller_button());
-            status.push_str(LOC_BUTTON);
-            status.push_str(EDIT_BUTTON);
-            status.push_str("</div>");
-        }
-        status
+        )
     }
 
-    /// Convert to Edit HTML
-    fn to_html_edit(&self) -> String {
+    /// Convert to Setup HTML
+    fn to_html_setup(&self, anc: &CameraAnc) -> String {
+        let title = self.title(View::Setup);
         let cam_num = OptVal(self.cam_num);
-        let controller = HtmlStr::new(&self.controller);
+        let controller = anc.controller_html();
         let pin = OptVal(self.pin);
+        let footer = self.footer(true);
         format!(
-            "<div class='row'>\
+            "{title}\
+            <div class='row'>\
               <label for='cam_num'>Cam Num</label>\
               <input id='cam_num' type='number' min='1' max='9999' \
                      size='8' value='{cam_num}'>\
              </div>\
-             <div class='row'>\
-               <label for='controller'>Controller</label>\
-               <input id='controller' maxlength='20' size='20' \
-                      value='{controller}'>\
-             </div>\
+             {controller}\
              <div class='row'>\
                <label for='pin'>Pin</label>\
                <input id='pin' type='number' min='1' max='104' \
                       size='8' value='{pin}'>\
-             </div>"
+             </div>\
+             {footer}"
         )
     }
 }
@@ -144,13 +138,13 @@ impl Card for Camera {
     fn to_html(&self, view: View, anc: &CameraAnc) -> String {
         match view {
             View::Create => self.to_html_create(anc),
-            View::Status(config) => self.to_html_status(anc, config),
-            View::Edit => self.to_html_edit(),
+            View::Control => self.to_html_control(),
+            View::Setup => self.to_html_setup(anc),
             _ => self.to_html_compact(anc),
         }
     }
 
-    /// Get changed fields from Edit form
+    /// Get changed fields from Setup form
     fn changed_fields(&self) -> String {
         let mut fields = Fields::new();
         fields.changed_input("cam_num", self.cam_num);

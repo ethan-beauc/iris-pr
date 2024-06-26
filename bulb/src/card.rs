@@ -52,21 +52,6 @@ use wasm_bindgen::JsValue;
 /// Compact "Create" card
 const CREATE_COMPACT: &str = "<span class='create'>Create 🆕</span>";
 
-/// Close button
-const CLOSE_BUTTON: &str = "<button id='ob_close' type='button'>X</button>";
-
-/// Location button
-pub const LOC_BUTTON: &str =
-    "<button id='ob_loc' type='button'>🗺️ Location</button>";
-
-/// Delete button
-const DEL_BUTTON: &str =
-    "<button id='ob_delete' type='button'>🗑️ Delete</button>";
-
-/// Edit button
-pub const EDIT_BUTTON: &str =
-    "<button id='ob_edit' type='button'>📝 Edit</button>";
-
 /// Save button
 const SAVE_BUTTON: &str = "<button id='ob_save' type='button'>🖍️ Save</button>";
 
@@ -75,20 +60,24 @@ const SAVE_BUTTON: &str = "<button id='ob_save' type='button'>🖍️ Save</butt
 pub enum View {
     /// Hidden view
     Hidden,
+    /// Search view
+    Search,
     /// Compact Create view
     CreateCompact,
     /// Create view
     Create,
     /// Compact view
     Compact,
-    /// Status view (with config flag)
-    Status(bool),
-    /// Edit view
-    Edit,
+    /// Control view
+    Control,
+    /// Setup view
+    Setup,
+    /// Status view
+    Status,
     /// Location view
     Location,
-    /// Search view
-    Search,
+    /// Request view
+    Request,
 }
 
 impl View {
@@ -103,10 +92,18 @@ impl View {
 
     /// Is the view a form?
     pub fn is_form(self) -> bool {
-        matches!(
-            self,
-            View::Create | View::Status(_) | View::Edit | View::Location
-        )
+        match self {
+            View::Hidden
+            | View::Search
+            | View::CreateCompact
+            | View::Compact => false,
+            View::Create
+            | View::Control
+            | View::Setup
+            | View::Status
+            | View::Location
+            | View::Request => true,
+        }
     }
 
     /// Get compact view
@@ -114,6 +111,44 @@ impl View {
         match self {
             View::Create => View::CreateCompact,
             _ => View::Compact,
+        }
+    }
+
+    /// Get view as string slice
+    pub fn as_str(self) -> &'static str {
+        use View::*;
+        match self {
+            Hidden => "Hidden",
+            Search => "Search",
+            CreateCompact => "Create compact",
+            Create => "🆕 Create",
+            Compact => "⌄ Compact",
+            Control => "🕹️ Control",
+            Setup => "📝 Setup",
+            Status => "☑️ Status",
+            Location => "🗺️ Location",
+            Request => "🙏 Request",
+        }
+    }
+}
+
+impl TryFrom<&str> for View {
+    type Error = ();
+
+    fn try_from(type_n: &str) -> std::result::Result<Self, Self::Error> {
+        use View::*;
+        match type_n {
+            v if v == Hidden.as_str() => Ok(Hidden),
+            v if v == Search.as_str() => Ok(Search),
+            v if v == CreateCompact.as_str() => Ok(CreateCompact),
+            v if v == Create.as_str() => Ok(Create),
+            v if v == Compact.as_str() => Ok(Compact),
+            v if v == Control.as_str() => Ok(Control),
+            v if v == Setup.as_str() => Ok(Setup),
+            v if v == Status.as_str() => Ok(Status),
+            v if v == Location.as_str() => Ok(Location),
+            v if v == Request.as_str() => Ok(Request),
+            _ => Err(()),
         }
     }
 }
@@ -284,7 +319,7 @@ pub trait Card: Default + DeserializeOwned + Serialize + PartialEq {
     /// Convert to HTML view
     fn to_html(&self, view: View, _anc: &Self::Ancillary) -> String;
 
-    /// Get changed fields from Edit form
+    /// Get changed fields from Setup form
     fn changed_fields(&self) -> String;
 
     /// Handle click event for a button on the card
@@ -295,6 +330,41 @@ pub trait Card: Default + DeserializeOwned + Serialize + PartialEq {
     /// Handle input event for an element on the card
     fn handle_input(&self, _anc: Self::Ancillary, _id: String) {
         // ignore by default
+    }
+
+    /// Build card title
+    fn title(&self, view: View) -> String {
+        let name =
+            format!("{} {}", Self::res().symbol(), HtmlStr::new(self.name()));
+        let mut views = String::new();
+        views.push_str("<select id='ob_view'>");
+        for v in res_views(Self::res()) {
+            if *v == view {
+                views.push_str("<option selected>");
+            } else {
+                views.push_str("<option>");
+            }
+            views.push_str(v.as_str());
+            views.push_str("</option>");
+        }
+        views.push_str("</select>");
+        html_title_row(&[&name, &views], &[])
+    }
+
+    /// Build card footer
+    fn footer(&self, delete: bool) -> String {
+        let ob_delete = if delete {
+            "<button id='ob_delete' type='button'>🗑️ Delete</button>"
+        } else {
+            ""
+        };
+        format!(
+            "<div class='row'>\
+              <span></span>\
+              {ob_delete}\
+              {SAVE_BUTTON}\
+            </div>"
+        )
     }
 }
 
@@ -312,6 +382,45 @@ pub fn item_states(res: Option<Res>) -> &'static str {
         Some(Res::User) => User::ITEM_STATES,
         Some(_) => ITEM_STATES,
         None => "",
+    }
+}
+
+/// Get available views for a resource type
+pub fn res_views(res: Res) -> &'static [View] {
+    match res {
+        Res::CabinetStyle
+        | Res::CommConfig
+        | Res::Domain
+        | Res::FlowStream
+        | Res::GeoLoc
+        | Res::Gps
+        | Res::LaneMarking
+        | Res::LcsIndication
+        | Res::Modem
+        | Res::Permission
+        | Res::Role
+        | Res::User => &[View::Compact, View::Setup],
+        Res::GateArmArray => &[View::Compact, View::Control, View::Location],
+        Res::LcsArray => &[View::Compact, View::Control],
+        Res::RampMeter => {
+            &[View::Compact, View::Control, View::Setup, View::Location]
+        }
+        Res::Dms => &[
+            View::Compact,
+            View::Control,
+            View::Setup,
+            View::Location,
+            View::Request,
+        ],
+        Res::Alarm
+        | Res::CommLink
+        | Res::Detector
+        | Res::GateArm
+        | Res::VideoMonitor => &[View::Compact, View::Status, View::Setup],
+        Res::Controller | Res::WeatherSensor => {
+            &[View::Compact, View::Status, View::Setup, View::Location]
+        }
+        _ => &[View::Compact, View::Control, View::Setup],
     }
 }
 
@@ -705,7 +814,7 @@ impl CardList {
                     None => CardView::new(C::res(), c1.name(), View::Compact),
                 };
                 let html = if cv.view.is_form() {
-                    make_html(&cv, &fetch_one_x::<C>(&cv).await?)
+                    fetch_one(&cv).await?
                 } else {
                     c1.to_html(cv.view, &anc)
                 };
@@ -762,63 +871,21 @@ fn build_item_states<C: Card>(cards: &[C], anc: &C::Ancillary) -> String {
 /// Fetch a card for a given view
 pub async fn fetch_one(cv: &CardView) -> Result<String> {
     let html = match cv.view {
-        View::CreateCompact => CREATE_COMPACT.into(),
-        View::Hidden | View::Create | View::Compact => {
-            fetch_one_res(cv).await?
+        View::Create => {
+            let html = fetch_one_res(cv).await?;
+            html_card_create(cv.res, &html)
         }
-        View::Status(_config) if has_status(cv.res) => {
-            fetch_one_res(cv).await?
-        }
+        View::CreateCompact => CREATE_COMPACT.to_string(),
         View::Location => match fetch_geo_loc(cv).await? {
             Some(geo_loc) => {
-                let cv = CardView::new(Res::GeoLoc, &geo_loc, View::Edit);
+                let cv = CardView::new(Res::GeoLoc, &geo_loc, View::Location);
                 fetch_one_res(&cv).await?
             }
             None => return Err(Error::CardMismatch()),
         },
-        _ => fetch_one_res(&cv.clone().view(View::Edit)).await?,
+        _ => fetch_one_res(cv).await?,
     };
-    Ok(make_html(cv, &html))
-}
-
-/// Make HTML for a card
-fn make_html(cv: &CardView, html: &str) -> String {
-    match cv.view {
-        View::CreateCompact => CREATE_COMPACT.into(),
-        View::Create => html_card_create(cv.res, html),
-        View::Hidden | View::Compact => html.into(),
-        View::Location => html_card_edit(Res::GeoLoc, &cv.name, html, ""),
-        View::Status(_config) if has_status(cv.res) => {
-            html_card_status(cv.res, &cv.name, html)
-        }
-        _ => html_card_edit(cv.res, &cv.name, html, DEL_BUTTON),
-    }
-}
-
-/// Check if a resource has a Status view
-fn has_status(res: Res) -> bool {
-    matches!(
-        res,
-        Res::Alarm
-            | Res::Beacon
-            | Res::Camera
-            | Res::CommLink
-            | Res::Controller
-            | Res::Detector
-            | Res::Dms
-            | Res::FlowStream
-            | Res::GateArm
-            | Res::GateArmArray
-            | Res::GeoLoc
-            | Res::Gps
-            | Res::LaneMarking
-            | Res::LcsArray
-            | Res::LcsIndication
-            | Res::RampMeter
-            | Res::TagReader
-            | Res::VideoMonitor
-            | Res::WeatherSensor
-    )
+    Ok(html)
 }
 
 /// Fetch a card view
@@ -930,7 +997,7 @@ pub async fn patch_changed(cv: &CardView) -> Result<()> {
     }
 }
 
-/// Patch changed fields from an Edit view
+/// Patch changed fields from an Setup view
 async fn patch_changed_x<C: Card>(cv: &CardView) -> Result<()> {
     let pri = fetch_primary::<C>(&cv.name).await?;
     let changed = pri.changed_fields();
@@ -942,9 +1009,9 @@ async fn patch_changed_x<C: Card>(cv: &CardView) -> Result<()> {
 
 /// Handle click event for a button owned by the resource
 pub async fn handle_click(cv: &CardView, id: String) -> Result<()> {
-    let View::Status(_) = cv.view else {
+    if cv.view != View::Control && cv.view != View::Request {
         return Ok(());
-    };
+    }
     match cv.res {
         Res::Beacon => handle_click_x::<Beacon>(cv, id).await,
         Res::Dms => handle_click_x::<Dms>(cv, id).await,
@@ -955,7 +1022,7 @@ pub async fn handle_click(cv: &CardView, id: String) -> Result<()> {
 /// Handle click event for a button on a card
 async fn handle_click_x<C: Card>(cv: &CardView, id: String) -> Result<()> {
     let pri = fetch_primary::<C>(&cv.name).await?;
-    let anc = fetch_ancillary(View::Status(false), &pri).await?;
+    let anc = fetch_ancillary(cv.view, &pri).await?;
     for action in pri.handle_click(anc, id) {
         action.perform().await?;
     }
@@ -964,9 +1031,9 @@ async fn handle_click_x<C: Card>(cv: &CardView, id: String) -> Result<()> {
 
 /// Handle input event for an element owned by the resource
 pub async fn handle_input(cv: &CardView, id: String) -> Result<()> {
-    let View::Status(_) = cv.view else {
+    if cv.view != View::Control {
         return Ok(());
-    };
+    }
     match cv.res {
         Res::Dms => handle_input_x::<Dms>(&cv.name, id).await,
         Res::Domain => handle_input_x::<Domain>(&cv.name, id).await,
@@ -977,7 +1044,7 @@ pub async fn handle_input(cv: &CardView, id: String) -> Result<()> {
 /// Handle input event for an element on a card
 async fn handle_input_x<C: Card>(name: &str, id: String) -> Result<()> {
     let pri = fetch_primary::<C>(name).await?;
-    let anc = fetch_ancillary(View::Status(false), &pri).await?;
+    let anc = fetch_ancillary(View::Control, &pri).await?;
     pri.handle_input(anc, id);
     Ok(())
 }
@@ -985,36 +1052,18 @@ async fn handle_input_x<C: Card>(name: &str, id: String) -> Result<()> {
 /// Build a create card
 fn html_card_create(res: Res, create: &str) -> String {
     let name = format!("{} 🆕", res.symbol());
-    let mut html = html_title_row(&[&name, "Create", CLOSE_BUTTON], &[]);
+    let mut views = String::new();
+    views.push_str("<select id='ob_view'>");
+    views.push_str("<option>");
+    views.push_str(View::CreateCompact.as_str());
+    views.push_str("<option selected>");
+    views.push_str(View::Create.as_str());
+    views.push_str("</select>");
+    let mut html = html_title_row(&[&name, &views], &[]);
     html.push_str(create);
     html.push_str("<div class='row end'>");
     html.push_str(SAVE_BUTTON);
     html.push_str("</div>");
-    html
-}
-
-/// Build an edit card
-fn html_card_edit(
-    res: Res,
-    name: &str,
-    edit: &str,
-    delete: &'static str,
-) -> String {
-    let name = format!("{} {}", res.symbol(), HtmlStr::new(name));
-    let mut html = html_title_row(&[&name, "Edit", CLOSE_BUTTON], &[]);
-    html.push_str(edit);
-    html.push_str("<div class='row'><span></span>");
-    html.push_str(delete);
-    html.push_str(SAVE_BUTTON);
-    html.push_str("</div>");
-    html
-}
-
-/// Build a status card
-fn html_card_status(res: Res, name: &str, status: &str) -> String {
-    let name = format!("{} {}", res.symbol(), HtmlStr::new(name));
-    let mut html = html_title_row(&[&name, CLOSE_BUTTON], &[]);
-    html.push_str(status);
     html
 }
 
