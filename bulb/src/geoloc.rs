@@ -49,6 +49,7 @@ pub struct RoadModifier {
 #[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
 pub struct GeoLoc {
     pub name: String,
+    pub resource_n: String,
     pub roadway: Option<String>,
     pub road_dir: u16,
     pub cross_street: Option<String>,
@@ -57,8 +58,6 @@ pub struct GeoLoc {
     pub landmark: Option<String>,
     pub lat: Option<f64>,
     pub lon: Option<f64>,
-    // secondary attributes
-    pub resource_n: Option<String>,
 }
 
 /// Ancillary location data
@@ -83,7 +82,7 @@ impl AncillaryData for GeoLocAnc {
         view: View,
     ) -> Box<dyn Iterator<Item = Uri>> {
         match view {
-            View::Setup => Box::new(
+            View::Location => Box::new(
                 [
                     ROAD_URI.into(),
                     DIRECTION_URI.into(),
@@ -188,9 +187,9 @@ impl GeoLocAnc {
 }
 
 impl GeoLoc {
-    /// Convert to Setup HTML
-    fn to_html_setup(&self, anc: &GeoLocAnc) -> String {
-        let title = self.title(View::Setup);
+    /// Convert to Location HTML
+    fn to_html_location(&self, anc: &GeoLocAnc) -> String {
+        let title = self.title(View::Location);
         let roadway = anc.roads_html("roadway", self.roadway.as_deref());
         let rdir = anc.directions_html("road_dir", self.road_dir);
         let xmod = anc.modifiers_html(self.cross_mod);
@@ -264,12 +263,12 @@ impl Card for GeoLoc {
     /// Convert to HTML view
     fn to_html(&self, view: View, anc: &GeoLocAnc) -> String {
         match view {
-            View::Setup => self.to_html_setup(anc),
+            View::Location => self.to_html_location(anc),
             _ => unreachable!(),
         }
     }
 
-    /// Get changed fields from Setup form
+    /// Get changed fields from Location form
     fn changed_fields(&self) -> String {
         let mut fields = Fields::new();
         fields.changed_select("roadway", &self.roadway);
