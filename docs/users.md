@@ -7,19 +7,26 @@ and [domains](#domains).
 
 ## User IDs
 
-A user must have an ID to log in to IRIS.  The user's permissions are
-determined by their [role](#roles).
+A user must have an ID to log in to IRIS.
 
-If the user has a **distinguished name** (`dn`), then authentication is
-performed using [LDAP].  Otherwise, the supplied password is checked against
-the stored password hash for the account.
+Field     | Description
+----------|-------------
+Name      | Account name
+Full Name | User name
+Role      | [Role](#roles) which determines the authorized permissions
+Dn        | **Distinguished name** for [LDAP] authentication
+Password  | Hash of password
+Enabled   | Flag to disable account
 
-In addition to the password, these checks are performed:
- - The user must be `enabled`
- - The role must be `enabled`
+On login, these checks are performed:
+ - The user and role must be `enabled`
  - The connection IP must be within an `enabled` domain for the role
  - _(Web UI)_ All IPs in the [X-Forwarded-For] HTTP header must be within
    `enabled` domains for the role
+ - Password authenticated
+   * If `dn` is set: [LDAP] server authentication - on success, update the
+     cached password hash
+   * If `dn` is NULL (or LDAP connection fails): password hash authentication
 
 <details>
 <summary>API Resources 🕵️ </summary>
@@ -27,11 +34,13 @@ In addition to the password, these checks are performed:
 * `iris/api/user_id`
 * `iris/api/user_id/{name}`
 
-| Access       | Primary          | Secondary |
-|--------------|------------------|-----------|
-| 👁️  View      | name             |           |
-| 💡 Manage    | enabled          |           |
-| 🔧 Configure | full\_name, role | dn        |
+| Access       | Primary          | Secondary  |
+|--------------|------------------|------------|
+| 👁️ View      | name             |            |
+| 💡 Manage    | enabled          | password † |
+| 🔧 Configure | full\_name, role | dn         |
+
+† _Write only_
 
 </details>
 
@@ -126,7 +135,9 @@ Whenever certain client events occur, a time-stamped record is added to the
 * FAIL AUTHENTICATION
 * FAIL DOMAIN
 * FAIL DOMAIN XFF
+* FAIL PASSWORD
 * CHANGE PASSWORD
+* UPDATE PASSWORD
 
 These records are purged automatically when older than the value of the
 `client_event_purge_days` [system attribute].

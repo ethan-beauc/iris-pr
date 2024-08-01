@@ -34,7 +34,7 @@ import us.mn.state.dot.tms.EncoderType;
 import us.mn.state.dot.tms.EventType;
 import us.mn.state.dot.tms.GeoLoc;
 import us.mn.state.dot.tms.GeoLocHelper;
-import us.mn.state.dot.tms.HashtagHelper;
+import us.mn.state.dot.tms.Hashtags;
 import us.mn.state.dot.tms.ItemStyle;
 import us.mn.state.dot.tms.SystemAttrEnum;
 import us.mn.state.dot.tms.TMSException;
@@ -54,9 +54,6 @@ import us.mn.state.dot.tms.server.event.CameraVideoEvent;
  */
 public class CameraImpl extends DeviceImpl implements Camera {
 
-	/** Camera / hashtag mapping */
-	static private TagMapping mapping;
-
 	/** Invalid preset number */
 	static private final int INVALID_PRESET = -1;
 
@@ -71,12 +68,10 @@ public class CameraImpl extends DeviceImpl implements Camera {
 	/** Load all the cameras */
 	static protected void loadAll() throws TMSException {
 		namespace.registerType(SONAR_TYPE, CameraImpl.class);
-		mapping = new TagMapping(store, "iris", SONAR_TYPE,
-			"hashtag");
 		store.query("SELECT name, geo_loc, controller, pin, notes, " +
 			"cam_num, encoder_type, enc_address, enc_port, " +
-			"enc_mcast, enc_channel, publish, streamable, " +
-			"video_loss, cam_template FROM iris." + SONAR_TYPE + ";",
+			"enc_mcast, enc_channel, publish, video_loss, " +
+			"cam_template FROM iris." + SONAR_TYPE + ";",
 			new ResultFactory()
 		{
 			public void create(ResultSet row) throws Exception {
@@ -101,7 +96,6 @@ public class CameraImpl extends DeviceImpl implements Camera {
 		map.put("enc_mcast", enc_mcast);
 		map.put("enc_channel", enc_channel);
 		map.put("publish", publish);
-		map.put("streamable", streamable);
 		map.put("video_loss", video_loss);
 		map.put("cam_template", cam_template);
 		return map;
@@ -142,17 +136,16 @@ public class CameraImpl extends DeviceImpl implements Camera {
 		     row.getString(10),          // enc_mcast
 		     (Integer) row.getInt(11),   // enc_channel
 		     row.getBoolean(12),         // publish
-		     row.getBoolean(13),         // streamable
-		     row.getBoolean(14),         // video_loss
-		     row.getString(15)           // camera template
+		     row.getBoolean(13),         // video_loss
+		     row.getString(14)           // camera template
 		);
 	}
 
 	/** Create a camera */
 	private CameraImpl(String n, String l, String c, int p,
 		String nt, Integer cn, String et, String ea, Integer ep,
-		String em, Integer ec, boolean pb, boolean st, boolean vl,
-		String ct) throws TMSException
+		String em, Integer ec, boolean pb, boolean vl, String ct)
+		throws TMSException
 	{
 		super(n, lookupController(c), p, nt);
 		geo_loc = lookupGeoLoc(l);
@@ -163,19 +156,9 @@ public class CameraImpl extends DeviceImpl implements Camera {
 		enc_mcast = em;
 		enc_channel = ec;
 		publish = pb;
-		streamable = st;
 		video_loss = vl;
 		cam_template = lookupCameraTemplate(ct);
-		hashtags = lookupHashtagMapping();
 		initTransients();
-	}
-
-	/** Lookup mapping of hashtags */
-	private String[] lookupHashtagMapping() throws TMSException {
-		TreeSet<String> ht_set = new TreeSet<String>();
-		for (String ht: mapping.lookup(this))
-			ht_set.add(ht);
-		return ht_set.toArray(new String[0]);
 	}
 
 	/** Destroy an object */
@@ -360,80 +343,26 @@ public class CameraImpl extends DeviceImpl implements Camera {
 		return publish;
 	}
 
-	/** Streamable flag */
-	private boolean streamable;
-
-	/** Set streamable flag */
+	/** Set the administrator notes */
 	@Override
-	public void setStreamable(boolean s) {
-		streamable = s;
-	}
-
-	/** Set streamable flag */
-	public void doSetStreamable(boolean s) throws TMSException {
-		if (s != streamable) {
-			store.update(this, "streamable", s);
-			setStreamable(s);
-		}
-	}
-
-	/** Get streamable flag */
-	@Override
-	public boolean getStreamable() {
-		return streamable;
-	}
-
-	/** Hashtags for the camera */
-	private String[] hashtags = new String[0];
-
-	/** Set the hashtags assigned to the camera */
-	@Override
-	public void setHashtags(String[] ht) {
-		hashtags = ht;
-	}
-
-	/** Set the hashtags assigned to the camera */
-	public synchronized void doSetHashtags(String[] ht)
-		throws TMSException
-	{
-		String[] ht2 = HashtagHelper.makeHashtags(ht);
-		if (!Arrays.equals(ht, ht2))
-			throw new ChangeVetoException("BAD HASHTAGS");
-		if (!Arrays.equals(ht, hashtags)) {
-			TreeSet<String> ht_set = new TreeSet<String>(
-				Arrays.asList(ht)
-			);
-			mapping.update(this, ht_set);
-			setHashtags(ht);
-			updateStyles();
-		}
+	public void doSetNotes(String n) throws TMSException {
+		super.doSetNotes(n);
+		updateStyles();
 	}
 
 	/** Add a hashtag to the camera */
-	public synchronized void addHashtagNotify(String aht) {
-		aht = HashtagHelper.normalize(aht);
-		if (aht == null)
+	public synchronized void addHashtagNotify(String ht) {
+		ht = Hashtags.normalize(ht);
+		if (ht == null)
 			return;
-		TreeSet<String> ht_set = new TreeSet<String>(
-			Arrays.asList(hashtags)
-		);
-		if (ht_set.add(aht)) {
-			try {
-				mapping.update(this, ht_set);
-				hashtags = ht_set.toArray(new String[0]);
-				notifyAttribute("hashtags");
-				updateStyles();
-			}
-			catch (TMSException e) {
-				logError("hashtags map: " + e.getMessage());
-			}
+		if (new Hashtags(notes).contains(ht))
+			return;
+		try {
+			doSetNotes(Hashtags.add(notes, ht));
 		}
-	}
-
-	/** Get the hashtags assigned to the camera */
-	@Override
-	public String[] getHashtags() {
-		return hashtags;
+		catch (TMSException e) {
+			logError("add hashtags: " + e.getMessage());
+		}
 	}
 
 	/** Flag to indicate video loss */

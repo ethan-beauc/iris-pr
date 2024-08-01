@@ -29,7 +29,6 @@ import us.mn.state.dot.sonar.client.TypeCache;
 import us.mn.state.dot.tms.Camera;
 import us.mn.state.dot.tms.CameraTemplate;
 import us.mn.state.dot.tms.EncoderType;
-import us.mn.state.dot.tms.HashtagHelper;
 import us.mn.state.dot.tms.client.Session;
 import us.mn.state.dot.tms.client.proxy.ProxyListModel;
 import us.mn.state.dot.tms.client.widget.IAction;
@@ -43,6 +42,9 @@ import us.mn.state.dot.tms.client.widget.IPanel.Stretch;
  * @author Douglas Lau
  */
 public class PropSetup extends IPanel {
+
+	/** Notes text area */
+	private final JTextArea notes_txt = new JTextArea(8, 32);
 
 	/** Camera number text */
 	private final JTextField cam_num_txt = new JTextField("", 8);
@@ -90,40 +92,28 @@ public class PropSetup extends IPanel {
 			camera.setPublish(publish_chk.isSelected());
 		}
 	});
-	
+
 	/** Camera Template ComboBox */
-	private final JComboBox<CameraTemplate> cam_tmplt_cbx = 
-			new JComboBox<CameraTemplate>();
-	
+	private final JComboBox<CameraTemplate> cam_tmplt_cbx =
+		new JComboBox<CameraTemplate>();
+
 	/** Camera template action */
 	private final IAction cam_tmplt_act = new IAction("camera.template"){
 		protected void doActionPerformed(ActionEvent e) {
 			CameraTemplate ct = getSelectedCameraTemplate();
-		    camera.setCameraTemplate(ct);
+			camera.setCameraTemplate(ct);
 		}
 		@Override
 		protected void doUpdateSelected() {
 			cam_tmplt_cbx.setSelectedItem(camera.getCameraTemplate());
 		}
 	};
-	
+
 	/** Get the selected camera template */
 	private CameraTemplate getSelectedCameraTemplate() {
 		Object ct = cam_tmplt_cbx.getSelectedItem();
 		return (ct instanceof CameraTemplate) ? (CameraTemplate) ct : null;
 	}
-	
-
-	/** Checkbox to allow streaming camera images */
-	private final JCheckBox streamable_chk = new JCheckBox(new IAction(null)
-	{
-		protected void doActionPerformed(ActionEvent e) {
-			camera.setStreamable(streamable_chk.isSelected());
-		}
-	});
-
-	/** Hashtag text area */
-	private final JTextArea hashtag_txt = new JTextArea(6, 32);
 
 	/** User session */
 	private final Session session;
@@ -150,6 +140,8 @@ public class PropSetup extends IPanel {
 				cc.getCameraTemplateModel()));
 		cam_tmplt_cbx.setRenderer(new CameraTemplateRenderer());
 		cam_tmplt_cbx.setAction(cam_tmplt_act);
+		add("device.notes");
+		add(notes_txt, Stretch.FULL);
 		add("camera.num");
 		add(cam_num_txt, Stretch.LAST);
 		add("encoder.type");
@@ -166,15 +158,17 @@ public class PropSetup extends IPanel {
 		add(cam_tmplt_cbx, Stretch.LAST);
 		add("camera.publish");
 		add(publish_chk, Stretch.LAST);
-		add("camera.streamable");
-		add(streamable_chk, Stretch.LAST);
-		add("hashtags");
-		add(hashtag_txt, Stretch.LAST);
 		createJobs();
 	}
 
 	/** Create jobs */
 	private void createJobs() {
+		notes_txt.addFocusListener(new FocusAdapter() {
+			public void focusLost(FocusEvent e) {
+				String n = notes_txt.getText().trim();
+				camera.setNotes((n.length() > 0) ? n : null);
+			}
+		});
 		cam_num_txt.addFocusListener(new FocusAdapter() {
 			public void focusLost(FocusEvent e) {
 			    Integer cn = parseInt(cam_num_txt);
@@ -215,19 +209,11 @@ public class PropSetup extends IPanel {
 				camera.setEncChannel(null);
 			}
 		});
-		hashtag_txt.addFocusListener(new FocusAdapter() {
-			@Override public void focusLost(FocusEvent e) {
-				String ht = hashtag_txt.getText();
-				String[] tags = HashtagHelper.makeHashtags(
-					ht.split(" ")
-				);
-				camera.setHashtags(tags);
-			}
-		});
 	}
-	
+
 	/** Update the edit mode */
 	public void updateEditMode() {
+		notes_txt.setEnabled(canWrite("notes"));
 		cam_num_txt.setEnabled(canWrite("camNum"));
 		enc_type_act.setEnabled(canWrite("encoderType"));
 		cam_tmplt_cbx.setEnabled(canWrite("cameraTemplate"));
@@ -236,12 +222,14 @@ public class PropSetup extends IPanel {
 		enc_mcast_txt.setEnabled(canWrite("encMcast"));
 		enc_chn_spn.setEnabled(canWrite("encChannel"));
 		publish_chk.setEnabled(canWrite("publish"));
-		streamable_chk.setEnabled(canWrite("streamable"));
-		hashtag_txt.setEnabled(canWrite("hashtags"));
 	}
 
 	/** Update one attribute on the form tab */
 	public void updateAttribute(String a) {
+		if (a == null || a.equals("notes")) {
+			String n = camera.getNotes();
+			notes_txt.setText((n != null) ? n : "");
+		}
 		if (a == null || a.equals("camNum")) {
 			Integer cn = camera.getCamNum();
 			cam_num_txt.setText((cn != null) ? cn.toString() : "");
@@ -268,16 +256,6 @@ public class PropSetup extends IPanel {
 		}
 		if (a == null || a.equals("publish"))
 			publish_chk.setSelected(camera.getPublish());
-		if (a == null || a.equals("streamable"))
-			streamable_chk.setSelected(camera.getStreamable());
-		if (null == a || a.equals("hashtags")) {
-			String[] hashtags = camera.getHashtags();
-			System.err.println("#Tags " + hashtags);
-			String ht = (hashtags != null)
-				? String.join(" ", hashtags)
-				: "";
-			hashtag_txt.setText(ht);
-		}
 	}
 
 	/** Check if the user can write an attribute */

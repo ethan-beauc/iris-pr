@@ -19,7 +19,7 @@ package us.mn.state.dot.tms;
  *
  * @author Douglas Lau
  */
-public interface DMS extends Device, Taggable {
+public interface DMS extends Device {
 
 	/** SONAR type name */
 	String SONAR_TYPE = "dms";
@@ -39,12 +39,6 @@ public interface DMS extends Device, Taggable {
 	/** Get static graphic (hybrid sign) */
 	Graphic getStaticGraphic();
 
-	/** Set the hashtags */
-	void setHashtags(String[] ht);
-
-	/** Get the hashtags */
-	String[] getHashtags();
-
 	/** Set remote beacon */
 	void setBeacon(Beacon b);
 
@@ -56,6 +50,12 @@ public interface DMS extends Device, Taggable {
 
 	/** Get verification camera preset */
 	CameraPreset getPreset();
+
+	/** Set the RWIS sensors configured for the sign */
+	void setWeatherSensors(WeatherSensor[] ess);
+
+	/** Get the RWIS sensors configured for the sign */
+	WeatherSensor[] getWeatherSensors();
 
 	/** Get the sign configuration */
 	SignConfig getSignConfig();

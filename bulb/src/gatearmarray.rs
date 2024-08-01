@@ -10,25 +10,16 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 //
+use crate::asset::Asset;
 use crate::card::{AncillaryData, Card, View};
 use crate::error::Result;
-use crate::fetch::Uri;
-use crate::gatearm::item_state;
-use crate::util::{ContainsLower, Fields, HtmlStr};
+use crate::gatearm::{item_states, GateArmState};
+use crate::geoloc::{Loc, LocAnc};
+use crate::util::{ContainsLower, HtmlStr};
 use resources::Res;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
-use std::iter::{empty, once};
 use wasm_bindgen::JsValue;
-
-/// Gate arm states
-///
-/// FIXME: share with gatearm module
-#[derive(Debug, Deserialize, Serialize)]
-pub struct GateArmState {
-    pub id: u32,
-    pub description: String,
-}
 
 /// Gate Arm Array
 #[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
@@ -45,37 +36,48 @@ pub struct GateArmArray {
 /// Ancillary gate arm array data
 #[derive(Debug, Default)]
 pub struct GateArmArrayAnc {
-    pub states: Option<Vec<GateArmState>>,
+    loc: LocAnc<GateArmArray>,
+    pub states: Vec<GateArmState>,
 }
-
-const GATE_ARM_STATE_URI: &str = "/iris/lut/gate_arm_state";
 
 impl AncillaryData for GateArmArrayAnc {
     type Primary = GateArmArray;
 
-    /// Get ancillary URI iterator
-    fn uri_iter(
-        &self,
-        _pri: &GateArmArray,
-        view: View,
-    ) -> Box<dyn Iterator<Item = Uri>> {
-        match view {
-            View::Search | View::Control => {
-                Box::new(once(GATE_ARM_STATE_URI.into()))
-            }
-            _ => Box::new(empty()),
+    /// Construct ancillary gate arm array data
+    fn new(pri: &GateArmArray, view: View) -> Self {
+        let mut loc = LocAnc::new(pri, view);
+        if let View::Search | View::Control = view {
+            loc.assets.push(Asset::GateArmStates);
         }
+        let states = Vec::new();
+        GateArmArrayAnc { loc, states }
     }
 
-    /// Put ancillary data
-    fn set_data(
+    /// Get next asset to fetch
+    fn asset(&mut self) -> Option<Asset> {
+        self.loc.assets.pop()
+    }
+
+    /// Set asset value
+    fn set_asset(
         &mut self,
-        _pri: &GateArmArray,
-        _uri: Uri,
-        data: JsValue,
-    ) -> Result<bool> {
-        self.states = Some(serde_wasm_bindgen::from_value(data)?);
-        Ok(false)
+        pri: &GateArmArray,
+        asset: Asset,
+        value: JsValue,
+    ) -> Result<()> {
+        if let Asset::GateArmStates = asset {
+            self.states = serde_wasm_bindgen::from_value(value)?;
+        } else {
+            self.loc.set_asset(pri, asset, value)?;
+        }
+        Ok(())
+    }
+}
+
+impl Loc for GateArmArray {
+    /// Get geo location name
+    fn geoloc(&self) -> Option<&str> {
+        self.geo_loc.as_deref()
     }
 }
 
@@ -83,10 +85,10 @@ impl GateArmArray {
     /// Convert to Compact HTML
     fn to_html_compact(&self) -> String {
         let name = HtmlStr::new(self.name());
-        let item = item_state(self.arm_state);
+        let item_states = item_states(self.arm_state);
         let location = HtmlStr::new(&self.location).with_len(32);
         format!(
-            "<div class='title row'>{name} {item}</div>\
+            "<div class='title row'>{name} {item_states}</div>\
             <div class='info fill'>{location}</div>"
         )
     }
@@ -94,13 +96,12 @@ impl GateArmArray {
     /// Convert to Control HTML
     fn to_html_control(&self) -> String {
         let title = self.title(View::Control);
+        let item_states = item_states(self.arm_state).to_html();
         let location = HtmlStr::new(&self.location).with_len(64);
-        let item = item_state(self.arm_state);
-        let desc = item.description();
         format!(
             "{title}\
-            <div class='info'>{location}</div>\
-            <div class='info'>{item} {desc}</div>"
+            <div class='row'>{item_states}</div>\
+            <div class='info'>{location}</div>"
         )
     }
 }
@@ -127,16 +128,11 @@ impl Card for GateArmArray {
         self
     }
 
-    /// Get geo location name
-    fn geo_loc(&self) -> Option<&str> {
-        self.geo_loc.as_deref()
-    }
-
     /// Check if a search string matches
     fn is_match(&self, search: &str, _anc: &GateArmArrayAnc) -> bool {
         self.name.contains_lower(search)
             || self.location.contains_lower(search)
-            || item_state(self.arm_state).is_match(search)
+            || item_states(self.arm_state).is_match(search)
     }
 
     /// Convert to HTML view
@@ -144,13 +140,13 @@ impl Card for GateArmArray {
         match view {
             View::Create => self.to_html_create(anc),
             View::Control => self.to_html_control(),
+            View::Location => anc.loc.to_html_loc(self),
             _ => self.to_html_compact(),
         }
     }
 
-    /// Get changed fields from Setup form
-    fn changed_fields(&self) -> String {
-        let fields = Fields::new();
-        fields.into_value().to_string()
+    /// Get changed fields on Location view
+    fn changed_location(&self, anc: GateArmArrayAnc) -> String {
+        anc.loc.changed_location()
     }
 }

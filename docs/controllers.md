@@ -18,12 +18,12 @@ In either case, a controller is required for any communication to a device.
 The read-only `controller_io` resource returns an array of objects consisting
 of `pin`, `name` and `resource_n` of associated [devices](#devices).
 
-| Access       | Primary                              | Secondary     |
-|--------------|--------------------------------------|---------------|
-| 👁️  View      | name, location, setup, fail\_time    | geo\_loc      |
-| 👉 Operate   |                                      | device\_req † |
-| 💡 Manage    | condition, notes                     |               |
-| 🔧 Configure | comm\_link, drop\_id, cabinet\_style | password      |
+| Access       | Primary                              | Secondary         |
+|--------------|--------------------------------------|-------------------|
+| 👁️  View      | name, location, setup, fail\_time    | geo\_loc          |
+| 👉 Operate   |                                      | device\_request † |
+| 💡 Manage    | condition, notes                     |                   |
+| 🔧 Configure | comm\_link, drop\_id, cabinet\_style | password          |
 
 † _Write only_
 
@@ -67,10 +67,10 @@ include:
 * [GPS]
 * [lane-use control signs] — LCS
 * [ramp meters]
-* [road weather information systems]
 * [tag readers]
 * [vehicle detection systems]
 * [video monitors]
+* [weather sensors]
 
 The controller must also be associated with a [comm link] which communicates
 using an appropriate protocol for the device.
@@ -113,8 +113,8 @@ Controllers can have an associated cabinet style, used for MnDOT-170 and Natch
 [protocol]: protocols.html
 [NTCIP]: protocols.html#ntcip
 [ramp meters]: ramp_meters.html
-[road weather information systems]: rwis.html
 [SierraGX]: protocols.html#sierragx
 [tag readers]: tolling.html#tag-readers
 [vehicle detection systems]: vehicle_detection.html
 [video monitors]: video.html
+[weather sensors]: weather_sensors.html

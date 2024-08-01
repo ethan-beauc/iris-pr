@@ -10,18 +10,18 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 //
+use crate::asset::Asset;
 use crate::cabinetstyle::CabinetStyle;
-use crate::card::{inactive_attr, AncillaryData, Card, View};
+use crate::card::{AncillaryData, Card, View};
 use crate::commconfig::CommConfig;
 use crate::commlink::CommLink;
 use crate::error::Result;
-use crate::fetch::Uri;
-use crate::item::ItemState;
+use crate::geoloc::{Loc, LocAnc};
+use crate::item::{ItemState, ItemStates};
 use crate::util::{ContainsLower, Fields, HtmlStr, Input, Select, TextArea};
 use resources::Res;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
-use std::iter::empty;
 use wasm_bindgen::JsValue;
 
 /// Controller conditions
@@ -33,7 +33,7 @@ pub struct Condition {
 
 /// Controller IO
 #[derive(Debug, Deserialize, Serialize)]
-pub struct ControllerIo {
+pub struct Io {
     pub pin: u32,
     pub resource_n: String,
     pub name: String,
@@ -67,83 +67,78 @@ pub struct Controller {
 /// Ancillary controller data
 #[derive(Debug, Default)]
 pub struct ControllerAnc {
+    loc: LocAnc<Controller>,
     pub conditions: Option<Vec<Condition>>,
     pub cabinet_styles: Option<Vec<CabinetStyle>>,
     pub comm_links: Option<Vec<CommLink>>,
     pub comm_configs: Option<Vec<CommConfig>>,
-    pub controller_io: Option<Vec<ControllerIo>>,
+    pub controller_io: Option<Vec<Io>>,
 }
-
-const CONDITION_URI: &str = "/iris/lut/condition";
-const COMM_LINK_URI: &str = "/iris/api/comm_link";
-const COMM_CONFIG_URI: &str = "/iris/api/comm_config";
-const CABINET_STYLE_URI: &str = "/iris/api/cabinet_style";
 
 impl AncillaryData for ControllerAnc {
     type Primary = Controller;
 
-    /// Get URI iterator
-    fn uri_iter(
-        &self,
-        pri: &Controller,
-        view: View,
-    ) -> Box<dyn Iterator<Item = Uri>> {
+    /// Construct ancillary controller data
+    fn new(pri: &Controller, view: View) -> Self {
+        let mut loc = LocAnc::new(pri, view);
         match view {
-            View::Search => Box::new(
-                [
-                    CONDITION_URI.into(),
-                    COMM_LINK_URI.into(),
-                    COMM_CONFIG_URI.into(),
-                ]
-                .into_iter(),
-            ),
-            View::Status => {
-                let mut uri = Uri::from("/iris/api/controller_io/");
-                uri.push(&pri.name);
-                Box::new(
-                    [
-                        CONDITION_URI.into(),
-                        COMM_LINK_URI.into(),
-                        COMM_CONFIG_URI.into(),
-                        uri,
-                    ]
-                    .into_iter(),
-                )
+            View::Search => {
+                loc.assets.push(Asset::Conditions);
+                loc.assets.push(Asset::CommLinks);
+                loc.assets.push(Asset::CommConfigs);
             }
-            View::Setup => Box::new(
-                [CONDITION_URI.into(), CABINET_STYLE_URI.into()].into_iter(),
-            ),
-            _ => Box::new(empty()),
+            View::Status => {
+                loc.assets.push(Asset::Conditions);
+                loc.assets.push(Asset::CommLinks);
+                loc.assets.push(Asset::CommConfigs);
+                loc.assets.push(Asset::ControllerIo(pri.name.to_string()));
+            }
+            View::Setup => {
+                loc.assets.push(Asset::Conditions);
+                loc.assets.push(Asset::CabinetStyles);
+            }
+            _ => (),
+        };
+        ControllerAnc {
+            loc,
+            ..Default::default()
         }
     }
 
-    /// Put ancillary data
-    fn set_data(
+    /// Get next asset to fetch
+    fn asset(&mut self) -> Option<Asset> {
+        self.loc.asset()
+    }
+
+    /// Set asset value
+    fn set_asset(
         &mut self,
-        _pri: &Controller,
-        uri: Uri,
-        data: JsValue,
-    ) -> Result<bool> {
-        match uri.as_str() {
-            CONDITION_URI => {
-                self.conditions = Some(serde_wasm_bindgen::from_value(data)?);
-            }
-            COMM_LINK_URI => {
-                self.comm_links = Some(serde_wasm_bindgen::from_value(data)?);
-            }
-            COMM_CONFIG_URI => {
-                self.comm_configs = Some(serde_wasm_bindgen::from_value(data)?);
-            }
-            CABINET_STYLE_URI => {
+        pri: &Controller,
+        asset: Asset,
+        value: JsValue,
+    ) -> Result<()> {
+        match asset {
+            Asset::CabinetStyles => {
                 self.cabinet_styles =
-                    Some(serde_wasm_bindgen::from_value(data)?);
+                    Some(serde_wasm_bindgen::from_value(value)?);
             }
-            _ => {
+            Asset::CommConfigs => {
+                self.comm_configs =
+                    Some(serde_wasm_bindgen::from_value(value)?);
+            }
+            Asset::CommLinks => {
+                self.comm_links = Some(serde_wasm_bindgen::from_value(value)?);
+            }
+            Asset::Conditions => {
+                self.conditions = Some(serde_wasm_bindgen::from_value(value)?);
+            }
+            Asset::ControllerIo(_ctrl) => {
                 self.controller_io =
-                    Some(serde_wasm_bindgen::from_value(data)?);
+                    Some(serde_wasm_bindgen::from_value(value)?);
             }
+            _ => self.loc.set_asset(pri, asset, value)?,
         }
-        Ok(false)
+        Ok(())
     }
 }
 
@@ -234,7 +229,7 @@ impl ControllerAnc {
     }
 }
 
-impl ControllerIo {
+impl Io {
     /// Create a button to select the controller IO
     pub fn button_link_html(&self) -> String {
         let pin = self.pin;
@@ -259,6 +254,13 @@ impl ControllerIo {
     }
 }
 
+impl Loc for Controller {
+    /// Get geo location name
+    fn geoloc(&self) -> Option<&str> {
+        self.geo_loc.as_deref()
+    }
+}
+
 impl Controller {
     /// Is controller active?
     pub fn is_active(&self) -> bool {
@@ -266,16 +268,13 @@ impl Controller {
         self.condition == 1
     }
 
-    /// Get item state
-    pub fn item_state(&self) -> ItemState {
-        if self.is_active() {
-            if self.fail_time.is_some() {
-                ItemState::Offline
-            } else {
-                ItemState::Available
-            }
-        } else {
-            ItemState::Inactive
+    /// Get item states
+    pub fn item_states(&self) -> ItemStates {
+        match (self.is_active(), self.fail_time.is_some()) {
+            (true, true) => ItemStates::default()
+                .with(ItemState::Offline, "FIXME: since fail time"),
+            (true, false) => ItemState::Available.into(),
+            (false, _) => ItemState::Inactive.into(),
         }
     }
 
@@ -327,12 +326,11 @@ impl Controller {
     /// Convert to compact HTML
     fn to_html_compact(&self) -> String {
         let name = HtmlStr::new(self.name());
-        let item_state = self.item_state();
-        let inactive = inactive_attr(self.is_active());
+        let item_states = self.item_states();
         let link_drop = HtmlStr::new(self.link_drop());
         format!(
-            "<div class='title row'>{name} {item_state}</div>\
-            <div class='info fill{inactive}'>{link_drop}</div>"
+            "<div class='title row'>{name} {item_states}</div>\
+            <div class='info fill'>{link_drop}</div>"
         )
     }
 
@@ -341,8 +339,7 @@ impl Controller {
         let title = self.title(View::Status);
         let res = Res::CommLink;
         let condition = anc.condition(self);
-        let item_state = self.item_state();
-        let item_desc = item_state.description();
+        let item_states = self.item_states().to_html();
         let comm_link = HtmlStr::new(&self.comm_link);
         let drop_id = self.drop_id;
         let comm_config = anc.comm_config(self);
@@ -397,8 +394,8 @@ impl Controller {
         format!(
             "{title}\
             <div class='row'>\
+              <span>{item_states}</span>\
               <span>{condition}</span>\
-              <span>{item_state} {item_desc}</span>\
               <span>\
                 <button type='button' class='go_link' \
                         data-link='{comm_link}' data-type='{res}'>\
@@ -487,16 +484,11 @@ impl Card for Controller {
         self
     }
 
-    /// Get geo location name
-    fn geo_loc(&self) -> Option<&str> {
-        self.geo_loc.as_deref()
-    }
-
     /// Check if a search string matches
     fn is_match(&self, search: &str, anc: &ControllerAnc) -> bool {
         self.name.contains_lower(search)
             || self.link_drop().contains_lower(search)
-            || self.item_state().is_match(search)
+            || self.item_states().is_match(search)
             || anc.condition(self).contains_lower(search)
             || anc.comm_config(self).contains_lower(search)
             || self.location.contains_lower(search)
@@ -522,14 +514,15 @@ impl Card for Controller {
     fn to_html(&self, view: View, anc: &ControllerAnc) -> String {
         match view {
             View::Create => self.to_html_create(anc),
-            View::Status => self.to_html_status(anc),
+            View::Location => anc.loc.to_html_loc(self),
             View::Setup => self.to_html_setup(anc),
+            View::Status => self.to_html_status(anc),
             _ => self.to_html_compact(),
         }
     }
 
     /// Get changed fields from Setup form
-    fn changed_fields(&self) -> String {
+    fn changed_setup(&self) -> String {
         let mut fields = Fields::new();
         fields.changed_input("comm_link", &self.comm_link);
         fields.changed_input("drop_id", self.drop_id);
@@ -538,5 +531,10 @@ impl Card for Controller {
         fields.changed_text_area("notes", &self.notes);
         fields.changed_input("password", &self.password);
         fields.into_value().to_string()
+    }
+
+    /// Get changed fields on Location view
+    fn changed_location(&self, anc: ControllerAnc) -> String {
+        anc.loc.changed_location()
     }
 }

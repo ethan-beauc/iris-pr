@@ -10,9 +10,9 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 //
-use crate::card::{inactive_attr, Card, View};
-use crate::device::{Device, DeviceAnc};
-use crate::util::{ContainsLower, Fields, HtmlStr, Input, OptVal};
+use crate::card::{Card, View};
+use crate::cio::{ControllerIo, ControllerIoAnc};
+use crate::util::{ContainsLower, Fields, HtmlStr, Input};
 use resources::Res;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
@@ -26,38 +26,28 @@ pub struct FlowStream {
     pub pin: Option<u32>,
 }
 
-type FlowStreamAnc = DeviceAnc<FlowStream>;
+type FlowStreamAnc = ControllerIoAnc<FlowStream>;
 
 impl FlowStream {
     /// Convert to Compact HTML
     fn to_html_compact(&self, anc: &FlowStreamAnc) -> String {
         let name = HtmlStr::new(self.name());
-        let inactive = inactive_attr(self.controller.is_some());
-        let item_state = anc.item_state(self);
-        format!("<div class='title row{inactive}'>{name} {item_state}</div>")
+        let item_states = anc.item_states(self);
+        format!("<div class='title row'>{name} {item_states}</div>")
     }
 
     /// Convert to Setup HTML
     fn to_html_setup(&self, anc: &FlowStreamAnc) -> String {
         let title = self.title(View::Setup);
-        let controller = anc.controller_html();
-        let pin = OptVal(self.pin);
+        let controller = anc.controller_html(self);
+        let pin = anc.pin_html(self.pin);
         let footer = self.footer(true);
-        format!(
-            "{title}\
-            {controller}\
-            <div class='row'>\
-              <label for='pin'>Pin</label>\
-              <input id='pin' type='number' min='1' max='104' \
-                     size='8' value='{pin}'>\
-            </div>\
-            {footer}"
-        )
+        format!("{title}{controller}{pin}{footer}")
     }
 }
 
-impl Device for FlowStream {
-    /// Get controller
+impl ControllerIo for FlowStream {
+    /// Get controller name
     fn controller(&self) -> Option<&str> {
         self.controller.as_deref()
     }
@@ -100,7 +90,7 @@ impl Card for FlowStream {
     }
 
     /// Get changed fields from Setup form
-    fn changed_fields(&self) -> String {
+    fn changed_setup(&self) -> String {
         let mut fields = Fields::new();
         fields.changed_input("controller", &self.controller);
         fields.changed_input("pin", self.pin);

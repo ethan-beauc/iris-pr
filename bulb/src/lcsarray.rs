@@ -10,14 +10,13 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 //
+use crate::asset::Asset;
 use crate::card::{AncillaryData, Card, View};
 use crate::error::Result;
-use crate::fetch::Uri;
-use crate::util::{ContainsLower, Fields, HtmlStr};
+use crate::util::{ContainsLower, HtmlStr};
 use resources::Res;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
-use std::iter::once;
 use wasm_bindgen::JsValue;
 
 /// LCS locks
@@ -40,6 +39,7 @@ pub struct LcsArray {
 /// Ancillary LCS array data
 #[derive(Debug, Default)]
 pub struct LcsArrayAnc {
+    assets: Vec<Asset>,
     pub locks: Option<Vec<LcsLock>>,
 }
 
@@ -57,29 +57,31 @@ impl LcsArrayAnc {
     }
 }
 
-const LCS_LOCK_URI: &str = "/iris/lut/lcs_lock";
-
 impl AncillaryData for LcsArrayAnc {
     type Primary = LcsArray;
 
-    /// Get URI iterator
-    fn uri_iter(
-        &self,
-        _pri: &LcsArray,
-        _view: View,
-    ) -> Box<dyn Iterator<Item = Uri>> {
-        Box::new(once(LCS_LOCK_URI.into()))
+    /// Construct ancillary LCS array data
+    fn new(_pri: &LcsArray, _view: View) -> Self {
+        LcsArrayAnc {
+            assets: vec![Asset::LcsLocks],
+            locks: None,
+        }
     }
 
-    /// Put ancillary data
-    fn set_data(
+    /// Get next asset to fetch
+    fn asset(&mut self) -> Option<Asset> {
+        self.assets.pop()
+    }
+
+    /// Set asset value
+    fn set_asset(
         &mut self,
         _pri: &LcsArray,
-        _uri: Uri,
-        data: JsValue,
-    ) -> Result<bool> {
-        self.locks = Some(serde_wasm_bindgen::from_value(data)?);
-        Ok(false)
+        _asset: Asset,
+        value: JsValue,
+    ) -> Result<()> {
+        self.locks = Some(serde_wasm_bindgen::from_value(value)?);
+        Ok(())
     }
 }
 
@@ -143,11 +145,5 @@ impl Card for LcsArray {
             View::Control => self.to_html_control(anc),
             _ => self.to_html_compact(anc),
         }
-    }
-
-    /// Get changed fields from Setup form
-    fn changed_fields(&self) -> String {
-        let fields = Fields::new();
-        fields.into_value().to_string()
     }
 }

@@ -10,14 +10,17 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 //
-use crate::card::{html_title_row, AncillaryData, Card, View};
-use crate::device::{Device, DeviceAnc, DeviceReq};
+use crate::asset::Asset;
+use crate::card::{html_title_row, uri_one, AncillaryData, Card, View};
+use crate::cio::{ControllerIo, ControllerIoAnc};
+use crate::device::DeviceReq;
 use crate::error::Result;
-use crate::fetch::{Action, ContentType, Uri};
+use crate::fetch::{Action, Uri};
+use crate::geoloc::{Loc, LocAnc};
 use crate::item::{ItemState, ItemStates};
-use crate::util::{
-    ContainsLower, Doc, Fields, HtmlStr, Input, OptVal, TextArea,
-};
+use crate::notes::contains_hashtag;
+use crate::start::fly_map_item;
+use crate::util::{ContainsLower, Doc, Fields, HtmlStr, Input, TextArea};
 use base64::{engine::general_purpose::STANDARD_NO_PAD as b64enc, Engine as _};
 use chrono::DateTime;
 use fnv::FnvHasher;
@@ -122,7 +125,6 @@ pub struct Dms {
     pub location: Option<String>,
     pub controller: Option<String>,
     pub notes: Option<String>,
-    pub hashtags: Option<String>,
     pub msg_current: Option<String>,
     pub has_faults: Option<bool>,
     // secondary attributes
@@ -205,15 +207,14 @@ pub struct GraphicName {
 /// DMS ancillary data
 #[derive(Default)]
 pub struct DmsAnc {
-    dev: DeviceAnc<Dms>,
+    cio: ControllerIoAnc<Dms>,
+    loc: LocAnc<Dms>,
     messages: Vec<SignMessage>,
     configs: Vec<SignConfig>,
     compose_patterns: Vec<MsgPattern>,
     lines: Vec<MsgLine>,
     words: Vec<Word>,
-    fnames: Vec<FontName>,
     fonts: FontTable<256, 24>,
-    gnames: Vec<GraphicName>,
     graphics: GraphicTable<32>,
 }
 
@@ -280,74 +281,57 @@ impl MsgPattern {
     }
 }
 
-const SIGN_MSG_URI: &str = "/iris/sign_message";
-const SIGN_CFG_URI: &str = "/iris/api/sign_config";
-const MSG_PATTERN_URI: &str = "/iris/api/msg_pattern";
-const MSG_LINE_URI: &str = "/iris/api/msg_line";
-const WORD_URI: &str = "/iris/api/word";
-const FONT_URI: &str = "/iris/api/font";
-const GRAPHIC_URI: &str = "/iris/api/graphic";
-
 impl AncillaryData for DmsAnc {
     type Primary = Dms;
 
-    /// Get ancillary URI iterator
-    fn uri_iter(
-        &self,
-        pri: &Self::Primary,
-        view: View,
-    ) -> Box<dyn Iterator<Item = Uri>> {
-        let mut uris = Vec::new();
-        // Have we been here before?
-        if !self.fnames.is_empty() {
-            for fname in &self.fnames {
-                let mut uri = Uri::from("/iris/tfon/")
-                    .with_content_type(ContentType::Text);
-                uri.push(&fname.name);
-                uri.add_extension(".tfon");
-                uris.push(uri);
-            }
-            for gname in &self.gnames {
-                let mut uri =
-                    Uri::from("/iris/gif/").with_content_type(ContentType::Gif);
-                uri.push(&gname.name);
-                uri.add_extension(".gif");
-                uris.push(uri);
-            }
-            return Box::new(uris.into_iter());
-        }
-        if let View::Compact | View::Search | View::Hidden = view {
-            uris.push(SIGN_MSG_URI.into());
+    /// Construct ancillary DMS data
+    fn new(pri: &Dms, view: View) -> Self {
+        let mut cio = ControllerIoAnc::new(pri, view);
+        if let View::Compact | View::Control | View::Search | View::Hidden =
+            view
+        {
+            cio.assets.push(Asset::SignMessages);
         }
         if let View::Control = view {
-            uris.push(SIGN_MSG_URI.into());
-            uris.push(SIGN_CFG_URI.into());
-            uris.push(MSG_PATTERN_URI.into());
-            uris.push(MSG_LINE_URI.into());
-            uris.push(WORD_URI.into());
-            uris.push(FONT_URI.into());
-            uris.push(GRAPHIC_URI.into());
+            cio.assets.push(Asset::SignConfigs);
+            cio.assets.push(Asset::MsgPatterns);
+            cio.assets.push(Asset::Words);
+            cio.assets.push(Asset::Fonts);
+            cio.assets.push(Asset::Graphics);
         }
-        Box::new(uris.into_iter().chain(self.dev.uri_iter(pri, view)))
+        let loc = LocAnc::new(pri, view);
+        DmsAnc {
+            cio,
+            loc,
+            ..Default::default()
+        }
     }
 
-    /// Set ancillary data
-    fn set_data(
+    /// Get next asset to fetch
+    fn asset(&mut self) -> Option<Asset> {
+        self.cio.assets.pop().or_else(|| self.loc.assets.pop())
+    }
+
+    /// Set asset value
+    fn set_asset(
         &mut self,
-        pri: &Self::Primary,
-        uri: Uri,
-        data: JsValue,
-    ) -> Result<bool> {
-        match uri.as_str() {
-            SIGN_MSG_URI => {
-                self.messages = serde_wasm_bindgen::from_value(data)?;
+        pri: &Dms,
+        asset: Asset,
+        value: JsValue,
+    ) -> Result<()> {
+        match asset {
+            Asset::Controllers => {
+                self.cio.set_asset(pri, asset, value)?;
             }
-            SIGN_CFG_URI => {
-                self.configs = serde_wasm_bindgen::from_value(data)?;
+            Asset::SignMessages => {
+                self.messages = serde_wasm_bindgen::from_value(value)?;
             }
-            MSG_PATTERN_URI => {
+            Asset::SignConfigs => {
+                self.configs = serde_wasm_bindgen::from_value(value)?;
+            }
+            Asset::MsgPatterns => {
                 let mut patterns: Vec<MsgPattern> =
-                    serde_wasm_bindgen::from_value(data)?;
+                    serde_wasm_bindgen::from_value(value)?;
                 patterns.retain(|p| {
                     p.compose_hashtag
                         .as_ref()
@@ -355,10 +339,13 @@ impl AncillaryData for DmsAnc {
                 });
                 patterns.sort();
                 self.compose_patterns = patterns;
+                // now that we have the patterns, let's fetch the lines
+                self.cio.assets.push(Asset::MsgLines);
             }
-            MSG_LINE_URI => {
+            Asset::MsgLines => {
                 let mut lines: Vec<MsgLine> =
-                    serde_wasm_bindgen::from_value(data)?;
+                    serde_wasm_bindgen::from_value(value)?;
+                // NOTE: patterns *must* be populated before this!
                 lines.retain(|ln| {
                     self.has_compose_pattern(&ln.msg_pattern)
                         && (ln.restrict_hashtag.is_none()
@@ -369,52 +356,53 @@ impl AncillaryData for DmsAnc {
                 });
                 self.lines = lines;
             }
-            WORD_URI => {
-                self.words = serde_wasm_bindgen::from_value(data)?;
+            Asset::Words => {
+                self.words = serde_wasm_bindgen::from_value(value)?;
             }
-            FONT_URI => {
-                self.fnames = serde_wasm_bindgen::from_value(data)?;
-                return Ok(!self.fnames.is_empty());
-            }
-            GRAPHIC_URI => {
-                self.gnames = serde_wasm_bindgen::from_value(data)?;
-                return Ok(!self.gnames.is_empty());
-            }
-            _ => {
-                if uri.as_str().ends_with(".tfon") {
-                    let font: String = serde_wasm_bindgen::from_value(data)?;
-                    let font = tfon::read(font.as_bytes())?;
-                    if let Some(f) = self.fonts.font_mut(font.number) {
-                        *f = font;
-                    } else if let Some(f) = self.fonts.font_mut(0) {
-                        *f = font;
-                    }
-                } else if uri.as_str().ends_with(".gif") {
-                    if let Ok(number) = uri
-                        .as_str()
-                        .replace(|c: char| !c.is_numeric(), "")
-                        .parse::<u8>()
-                    {
-                        let abuf = data.dyn_into::<ArrayBuffer>().unwrap();
-                        let graphic = Uint8Array::new(&abuf).to_vec();
-                        let graphic = load_graphic(&graphic[..], number)?;
-                        if let Some(g) = self.graphics.graphic_mut(number) {
-                            *g = graphic;
-                        } else if let Some(g) = self.graphics.graphic_mut(0) {
-                            *g = graphic;
-                        }
-                    } else {
-                        console::log_1(
-                            &format!("invalid graphic: {}", uri.as_str())
-                                .into(),
-                        );
-                    }
-                } else {
-                    return self.dev.set_data(pri, uri, data);
+            Asset::Fonts => {
+                let fnames: Vec<FontName> =
+                    serde_wasm_bindgen::from_value(value)?;
+                for fname in fnames {
+                    self.cio.assets.push(Asset::Font(fname.name));
                 }
             }
+            Asset::Font(_nm) => {
+                let font: String = serde_wasm_bindgen::from_value(value)?;
+                let font = tfon::read(font.as_bytes())?;
+                if let Some(f) = self.fonts.font_mut(font.number) {
+                    *f = font;
+                } else if let Some(f) = self.fonts.font_mut(0) {
+                    *f = font;
+                }
+            }
+            Asset::Graphics => {
+                let gnames: Vec<GraphicName> =
+                    serde_wasm_bindgen::from_value(value)?;
+                for gname in gnames {
+                    self.cio.assets.push(Asset::Graphic(gname.name));
+                }
+            }
+            Asset::Graphic(nm) => {
+                if let Ok(number) = nm
+                    .as_str()
+                    .replace(|c: char| !c.is_numeric(), "")
+                    .parse::<u8>()
+                {
+                    let abuf = value.dyn_into::<ArrayBuffer>().unwrap();
+                    let graphic = Uint8Array::new(&abuf).to_vec();
+                    let graphic = load_graphic(&graphic[..], number)?;
+                    if let Some(g) = self.graphics.graphic_mut(number) {
+                        *g = graphic;
+                    } else if let Some(g) = self.graphics.graphic_mut(0) {
+                        *g = graphic;
+                    }
+                } else {
+                    console::log_1(&format!("invalid graphic: {nm}").into());
+                }
+            }
+            _ => self.loc.set_asset(pri, asset, value)?,
         }
-        Ok(false)
+        Ok(())
     }
 }
 
@@ -464,7 +452,7 @@ impl SignMessage {
     }
 
     /// Get item states
-    fn item_states(&self) -> ItemStates {
+    fn item_states(&self) -> ItemStates<'_> {
         let blank = is_blank(&self.multi);
         let sources = self.sources();
         let mut states = ItemStates::default();
@@ -766,16 +754,14 @@ impl Dms {
 
     /// Check if DMS has a given hashtag
     fn has_hashtag(&self, hashtag: &str) -> bool {
-        match &self.hashtags {
-            Some(hashtags) => {
-                hashtags.split(' ').any(|h| hashtag.eq_ignore_ascii_case(h))
-            }
+        match &self.notes {
+            Some(notes) => contains_hashtag(notes, hashtag),
             None => false,
         }
     }
 
     /// Get one dedicated hashtag, if defined
-    fn dedicated(&self) -> Option<&str> {
+    fn dedicated(&self) -> Option<&'static str> {
         DEDICATED.iter().find(|tag| self.has_hashtag(tag)).copied()
     }
 
@@ -796,14 +782,10 @@ impl Dms {
 
     /// Get item states
     fn item_states<'a>(&'a self, anc: &'a DmsAnc) -> ItemStates<'a> {
-        let state = anc.dev.item_state(self);
-        let mut states = match state {
-            ItemState::Inactive => return ItemState::Inactive.into(),
-            ItemState::Available => anc.msg_states(self.msg_current.as_deref()),
-            ItemState::Offline => ItemStates::default()
-                .with(ItemState::Offline, "FIXME: since fail time"),
-            _ => state.into(),
-        };
+        let mut states = anc.cio.item_states(self);
+        if states.contains(ItemState::Available) {
+            states = anc.msg_states(self.msg_current.as_deref());
+        }
         if let Some(dedicated) = self.dedicated() {
             states = states.with(ItemState::Dedicated, dedicated);
         }
@@ -848,6 +830,9 @@ impl Dms {
 
     /// Convert to Control HTML
     fn to_html_control(&self, anc: &DmsAnc) -> String {
+        if let Some((lat, lon)) = anc.loc.latlon() {
+            fly_map_item(&self.name, lat, lon);
+        }
         let mut html = self.title(View::Control);
         html.push_str("<div class='row fill'>");
         html.push_str("<span>");
@@ -929,22 +914,18 @@ impl Dms {
     fn to_html_setup(&self, anc: &DmsAnc) -> String {
         let title = self.title(View::Setup);
         let notes = HtmlStr::new(&self.notes);
-        let controller = anc.dev.controller_html();
-        let pin = OptVal(self.pin);
+        let controller = anc.cio.controller_html(self);
+        let pin = anc.cio.pin_html(self.pin);
         let footer = self.footer(true);
         format!(
             "{title}\
             <div class='row'>\
               <label for='notes'>Notes</label>\
-              <textarea id='notes' maxlength='128' rows='2' \
+              <textarea id='notes' maxlength='255' rows='4' \
                         cols='24'>{notes}</textarea>\
             </div>\
             {controller}\
-            <div class='row'>\
-              <label for='pin'>Pin</label>\
-              <input id='pin' type='number' min='1' max='104' \
-                     size='8' value='{pin}'>\
-            </div>\
+            {pin}\
             {footer}"
         )
     }
@@ -1060,7 +1041,7 @@ impl Dms {
                     Some(owner) => {
                         let duration = self.selected_duration();
                         return anc.sign_msg_actions(
-                            Dms::uri_name(&self.name),
+                            uri_one(Res::Dms, &self.name),
                             SignMessage::new(cfg, ms, owner, HIGH_1, duration),
                         );
                     }
@@ -1075,7 +1056,7 @@ impl Dms {
     fn blank_actions(&self, anc: DmsAnc) -> Vec<Action> {
         match (&self.sign_config, sign_msg_owner(LOW_1)) {
             (Some(cfg), Some(owner)) => anc.sign_msg_actions(
-                Dms::uri_name(&self.name),
+                uri_one(Res::Dms, &self.name),
                 SignMessage::new(cfg, "", owner, LOW_1, None),
             ),
             _ => Vec::new(),
@@ -1085,9 +1066,9 @@ impl Dms {
     /// Create action to handle click on a device request button
     #[allow(clippy::vec_init_then_push)]
     fn device_req(&self, req: DeviceReq) -> Vec<Action> {
-        let uri = Dms::uri_name(&self.name);
+        let uri = uri_one(Res::Dms, &self.name);
         let mut fields = Fields::new();
-        fields.insert_num("device_req", req as u32);
+        fields.insert_num("device_request", req as u32);
         let value = fields.into_value().to_string();
         let mut actions = Vec::with_capacity(1);
         actions.push(Action::Patch(uri, value.into()));
@@ -1095,10 +1076,17 @@ impl Dms {
     }
 }
 
-impl Device for Dms {
-    /// Get controller
+impl ControllerIo for Dms {
+    /// Get controller name
     fn controller(&self) -> Option<&str> {
         self.controller.as_deref()
+    }
+}
+
+impl Loc for Dms {
+    /// Get geo location name
+    fn geoloc(&self) -> Option<&str> {
+        self.geo_loc.as_deref()
     }
 }
 
@@ -1136,11 +1124,6 @@ impl Card for Dms {
         self
     }
 
-    /// Get geo location name
-    fn geo_loc(&self) -> Option<&str> {
-        self.geo_loc.as_deref()
-    }
-
     /// Get the main item state
     fn item_state_main(&self, anc: &Self::Ancillary) -> ItemState {
         let item_states = self.item_states(anc);
@@ -1169,7 +1152,6 @@ impl Card for Dms {
                 .notes
                 .as_ref()
                 .is_some_and(|n| n.contains_lower(search))
-            || self.has_hashtag(search)
             || self.item_states(anc).is_match(search)
             || anc
                 .sign_message(self.msg_current.as_deref())
@@ -1181,19 +1163,25 @@ impl Card for Dms {
         match view {
             View::Create => self.to_html_create(anc),
             View::Control => self.to_html_control(anc),
-            View::Setup => self.to_html_setup(anc),
+            View::Location => anc.loc.to_html_loc(self),
             View::Request => self.to_html_request(anc),
+            View::Setup => self.to_html_setup(anc),
             _ => self.to_html_compact(anc),
         }
     }
 
     /// Get changed fields from Setup form
-    fn changed_fields(&self) -> String {
+    fn changed_setup(&self) -> String {
         let mut fields = Fields::new();
         fields.changed_text_area("notes", &self.notes);
         fields.changed_input("controller", &self.controller);
         fields.changed_input("pin", self.pin);
         fields.into_value().to_string()
+    }
+
+    /// Get changed fields on Location view
+    fn changed_location(&self, anc: DmsAnc) -> String {
+        anc.loc.changed_location()
     }
 
     /// Handle click event for a button on the card

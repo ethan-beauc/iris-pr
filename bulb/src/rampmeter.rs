@@ -10,12 +10,16 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 //
-use crate::card::{inactive_attr, Card, View};
-use crate::device::{Device, DeviceAnc};
-use crate::util::{ContainsLower, Fields, HtmlStr, Input, OptVal};
+use crate::asset::Asset;
+use crate::card::{AncillaryData, Card, View};
+use crate::cio::{ControllerIo, ControllerIoAnc};
+use crate::error::Result;
+use crate::geoloc::{Loc, LocAnc};
+use crate::util::{ContainsLower, Fields, HtmlStr, Input};
 use resources::Res;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
+use wasm_bindgen::JsValue;
 
 /// Ramp Meter
 #[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
@@ -28,27 +32,63 @@ pub struct RampMeter {
     pub pin: Option<u32>,
 }
 
-type RampMeterAnc = DeviceAnc<RampMeter>;
+/// Ramp meter ancillary data
+#[derive(Default)]
+pub struct RampMeterAnc {
+    cio: ControllerIoAnc<RampMeter>,
+    loc: LocAnc<RampMeter>,
+}
+
+impl AncillaryData for RampMeterAnc {
+    type Primary = RampMeter;
+
+    /// Construct ancillary ramp meter data
+    fn new(pri: &RampMeter, view: View) -> Self {
+        let cio = ControllerIoAnc::new(pri, view);
+        let loc = LocAnc::new(pri, view);
+        RampMeterAnc { cio, loc }
+    }
+
+    /// Get next asset to fetch
+    fn asset(&mut self) -> Option<Asset> {
+        self.cio.assets.pop().or_else(|| self.loc.assets.pop())
+    }
+
+    /// Set asset value
+    fn set_asset(
+        &mut self,
+        pri: &RampMeter,
+        asset: Asset,
+        value: JsValue,
+    ) -> Result<()> {
+        if let Asset::Controllers = asset {
+            self.cio.set_asset(pri, asset, value)
+        } else {
+            self.loc.set_asset(pri, asset, value)
+        }
+    }
+}
 
 impl RampMeter {
     /// Convert to Compact HTML
     fn to_html_compact(&self, anc: &RampMeterAnc) -> String {
         let name = HtmlStr::new(self.name());
-        let item_state = anc.item_state(self);
-        let inactive = inactive_attr(self.controller.is_some());
+        let item_states = anc.cio.item_states(self);
         let location = HtmlStr::new(&self.location).with_len(32);
         format!(
-            "<div class='title row'>{name} {item_state}</div>\
-            <div class='info fill{inactive}'>{location}</div>"
+            "<div class='title row'>{name} {item_states}</div>\
+            <div class='info fill'>{location}</div>"
         )
     }
 
     /// Convert to Control HTML
-    fn to_html_control(&self) -> String {
+    fn to_html_control(&self, anc: &RampMeterAnc) -> String {
         let title = self.title(View::Control);
+        let item_states = anc.cio.item_states(self).to_html();
         let location = HtmlStr::new(&self.location).with_len(64);
         format!(
             "{title}\
+            <div class='row'>{item_states}</div>\
             <div class='row'>\
               <span class='info'>{location}</span>\
             </div>"
@@ -58,26 +98,24 @@ impl RampMeter {
     /// Convert to Setup HTML
     fn to_html_setup(&self, anc: &RampMeterAnc) -> String {
         let title = self.title(View::Setup);
-        let controller = anc.controller_html();
-        let pin = OptVal(self.pin);
+        let controller = anc.cio.controller_html(self);
+        let pin = anc.cio.pin_html(self.pin);
         let footer = self.footer(true);
-        format!(
-            "{title}\
-            {controller}\
-            <div class='row'>\
-              <label for='pin'>Pin</label>\
-              <input id='pin' type='number' min='1' max='104' \
-                     size='8' value='{pin}'>\
-            </div>\
-            {footer}"
-        )
+        format!("{title}{controller}{pin}{footer}")
     }
 }
 
-impl Device for RampMeter {
-    /// Get controller
+impl ControllerIo for RampMeter {
+    /// Get controller name
     fn controller(&self) -> Option<&str> {
         self.controller.as_deref()
+    }
+}
+
+impl Loc for RampMeter {
+    /// Get geo location name
+    fn geoloc(&self) -> Option<&str> {
+        self.geo_loc.as_deref()
     }
 }
 
@@ -103,33 +141,34 @@ impl Card for RampMeter {
         self
     }
 
-    /// Get geo location name
-    fn geo_loc(&self) -> Option<&str> {
-        self.geo_loc.as_deref()
-    }
-
     /// Check if a search string matches
     fn is_match(&self, search: &str, anc: &RampMeterAnc) -> bool {
         self.name.contains_lower(search)
             || self.location.contains_lower(search)
-            || anc.item_state(self).is_match(search)
+            || anc.cio.item_states(self).is_match(search)
     }
 
     /// Convert to HTML view
     fn to_html(&self, view: View, anc: &RampMeterAnc) -> String {
         match view {
             View::Create => self.to_html_create(anc),
-            View::Control => self.to_html_control(),
+            View::Control => self.to_html_control(anc),
+            View::Location => anc.loc.to_html_loc(self),
             View::Setup => self.to_html_setup(anc),
             _ => self.to_html_compact(anc),
         }
     }
 
     /// Get changed fields from Setup form
-    fn changed_fields(&self) -> String {
+    fn changed_setup(&self) -> String {
         let mut fields = Fields::new();
         fields.changed_input("controller", &self.controller);
         fields.changed_input("pin", self.pin);
         fields.into_value().to_string()
+    }
+
+    /// Get changed fields on Location view
+    fn changed_location(&self, anc: RampMeterAnc) -> String {
+        anc.loc.changed_location()
     }
 }

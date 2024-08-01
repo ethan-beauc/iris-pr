@@ -10,16 +10,17 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 //
-use crate::card::{AncillaryData, Card, View};
-use crate::device::{Device, DeviceAnc};
+use crate::asset::Asset;
+use crate::card::{uri_one, AncillaryData, Card, View};
+use crate::cio::{ControllerIo, ControllerIoAnc};
 use crate::error::Result;
-use crate::fetch::{Action, Uri};
+use crate::fetch::Action;
+use crate::geoloc::{Loc, LocAnc};
 use crate::item::{ItemState, ItemStates};
 use crate::util::{ContainsLower, Fields, HtmlStr, Input, OptVal, TextArea};
 use resources::Res;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
-use std::iter::once;
 use wasm_bindgen::JsValue;
 
 /// Beacon States
@@ -48,39 +49,45 @@ pub struct Beacon {
 /// Beacon ancillary data
 #[derive(Default)]
 pub struct BeaconAnc {
-    dev: DeviceAnc<Beacon>,
+    cio: ControllerIoAnc<Beacon>,
+    loc: LocAnc<Beacon>,
     states: Option<Vec<BeaconState>>,
 }
-
-const BEACON_STATE_URI: &str = "/iris/lut/beacon_state";
 
 impl AncillaryData for BeaconAnc {
     type Primary = Beacon;
 
-    /// Get ancillary URI iterator
-    fn uri_iter(
-        &self,
-        pri: &Self::Primary,
-        view: View,
-    ) -> Box<dyn Iterator<Item = Uri>> {
-        Box::new(
-            once(BEACON_STATE_URI.into()).chain(self.dev.uri_iter(pri, view)),
-        )
+    /// Construct ancillary beacon data
+    fn new(pri: &Beacon, view: View) -> Self {
+        let mut cio = ControllerIoAnc::new(pri, view);
+        cio.assets.push(Asset::BeaconStates);
+        let loc = LocAnc::new(pri, view);
+        let states = None;
+        BeaconAnc { cio, loc, states }
     }
 
-    /// Set ancillary data
-    fn set_data(
+    /// Get next asset to fetch
+    fn asset(&mut self) -> Option<Asset> {
+        self.cio.assets.pop().or_else(|| self.loc.assets.pop())
+    }
+
+    /// Set asset value
+    fn set_asset(
         &mut self,
-        pri: &Self::Primary,
-        uri: Uri,
-        data: JsValue,
-    ) -> Result<bool> {
-        if uri.as_str() == BEACON_STATE_URI {
-            self.states = Some(serde_wasm_bindgen::from_value(data)?);
-        } else {
-            self.dev.set_data(pri, uri, data)?;
+        pri: &Beacon,
+        asset: Asset,
+        value: JsValue,
+    ) -> Result<()> {
+        match asset {
+            Asset::BeaconStates => {
+                self.states = Some(serde_wasm_bindgen::from_value(value)?);
+            }
+            Asset::Controllers => {
+                self.cio.set_asset(pri, asset, value)?;
+            }
+            _ => self.loc.set_asset(pri, asset, value)?,
         }
-        Ok(false)
+        Ok(())
     }
 }
 
@@ -96,10 +103,10 @@ impl Beacon {
     }
 
     /// Get item states
-    fn item_states(&self, anc: &BeaconAnc) -> ItemStates {
-        let state = anc.dev.item_state(self);
-        match state {
-            ItemState::Available => match self.state {
+    fn item_states<'a>(&'a self, anc: &'a BeaconAnc) -> ItemStates<'a> {
+        let mut states = anc.cio.item_states(self);
+        if states.contains(ItemState::Available) {
+            states = match self.state {
                 2 => ItemState::Available.into(),
                 4 => ItemState::Deployed.into(),
                 5 => ItemState::Fault.into(),
@@ -108,11 +115,9 @@ impl Beacon {
                 7 => ItemStates::from(ItemState::Deployed)
                     .with(ItemState::External, "external flashing"),
                 _ => ItemState::Unknown.into(),
-            },
-            ItemState::Offline => ItemStates::default()
-                .with(ItemState::Offline, "FIXME: since fail time"),
-            _ => state.into(),
+            }
         }
+        states
     }
 
     /// Get beacon state
@@ -155,8 +160,8 @@ impl Beacon {
     /// Convert to Control HTML
     fn to_html_control(&self, anc: &BeaconAnc) -> String {
         let title = self.title(View::Control);
-        let location = HtmlStr::new(&self.location).with_len(64);
         let item_states = self.item_states(anc).to_html();
+        let location = HtmlStr::new(&self.location).with_len(64);
         let flashing = if self.flashing() {
             CLASS_FLASHING
         } else {
@@ -166,10 +171,10 @@ impl Beacon {
         let message = HtmlStr::new(&self.message);
         format!(
             "{title}\
+            <div class='row'>{item_states}</div>\
             <div class='row'>\
               <span class='info'>{location}</span>\
             </div>\
-            <div class='row'>{item_states}</div>\
             <div class='beacon-container row center'>\
               <button id='ob_flashing'></button>\
               <label for='ob_flashing' class='beacon'>\
@@ -191,8 +196,8 @@ impl Beacon {
         let title = self.title(View::Setup);
         let message = HtmlStr::new(&self.message);
         let notes = HtmlStr::new(&self.notes);
-        let controller = anc.dev.controller_html();
-        let pin = OptVal(self.pin);
+        let controller = anc.cio.controller_html(self);
+        let pin = anc.cio.pin_html(self.pin);
         let verify_pin = OptVal(self.verify_pin);
         let ext_mode = if self.ext_mode.unwrap_or(false) {
             " checked"
@@ -213,11 +218,7 @@ impl Beacon {
                         cols='24'>{notes}</textarea>\
             </div>\
             {controller}\
-            <div class='row'>\
-              <label for='pin'>Pin</label>\
-              <input id='pin' type='number' min='1' max='104' \
-                     size='8' value='{pin}'>\
-            </div>\
+            {pin}\
             <div class='row'>\
               <label for='verify_pin'>Verify Pin</label>\
               <input id='verify_pin' type='number' min='1' max='104' \
@@ -232,10 +233,17 @@ impl Beacon {
     }
 }
 
-impl Device for Beacon {
-    /// Get controller
+impl ControllerIo for Beacon {
+    /// Get controller name
     fn controller(&self) -> Option<&str> {
         self.controller.as_deref()
+    }
+}
+
+impl Loc for Beacon {
+    /// Get geo location name
+    fn geoloc(&self) -> Option<&str> {
+        self.geo_loc.as_deref()
     }
 }
 
@@ -270,11 +278,6 @@ impl Card for Beacon {
         self
     }
 
-    /// Get geo location name
-    fn geo_loc(&self) -> Option<&str> {
-        self.geo_loc.as_deref()
-    }
-
     /// Check if a search string matches
     fn is_match(&self, search: &str, anc: &BeaconAnc) -> bool {
         self.name.contains_lower(search)
@@ -289,13 +292,14 @@ impl Card for Beacon {
         match view {
             View::Create => self.to_html_create(anc),
             View::Control => self.to_html_control(anc),
+            View::Location => anc.loc.to_html_loc(self),
             View::Setup => self.to_html_setup(anc),
             _ => self.to_html_compact(anc),
         }
     }
 
     /// Get changed fields from Setup form
-    fn changed_fields(&self) -> String {
+    fn changed_setup(&self) -> String {
         let mut fields = Fields::new();
         fields.changed_text_area("message", &self.message);
         fields.changed_text_area("notes", &self.notes);
@@ -304,6 +308,11 @@ impl Card for Beacon {
         fields.changed_input("verify_pin", self.verify_pin);
         fields.changed_input("ext_mode", self.ext_mode);
         fields.into_value().to_string()
+    }
+
+    /// Get changed fields on Location view
+    fn changed_location(&self, anc: BeaconAnc) -> String {
+        anc.loc.changed_location()
     }
 
     /// Handle click event for a button on the card
@@ -317,7 +326,7 @@ impl Card for Beacon {
                 4 | 5 => fields.insert_num("state", 1),
                 _ => (),
             }
-            let uri = Beacon::uri_name(&self.name);
+            let uri = uri_one(Res::Beacon, &self.name);
             let val = fields.into_value().to_string();
             vec![Action::Patch(uri, val.into())]
         } else {

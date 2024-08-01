@@ -48,7 +48,7 @@ import us.mn.state.dot.tms.GeoLoc;
 import us.mn.state.dot.tms.GeoLocHelper;
 import us.mn.state.dot.tms.Gps;
 import us.mn.state.dot.tms.Graphic;
-import us.mn.state.dot.tms.HashtagHelper;
+import us.mn.state.dot.tms.Hashtags;
 import us.mn.state.dot.tms.InvalidMsgException;
 import us.mn.state.dot.tms.ItemStyle;
 import us.mn.state.dot.tms.LCS;
@@ -65,6 +65,8 @@ import us.mn.state.dot.tms.SignMessageHelper;
 import us.mn.state.dot.tms.SignMsgPriority;
 import us.mn.state.dot.tms.SignMsgSource;
 import us.mn.state.dot.tms.TMSException;
+import us.mn.state.dot.tms.WeatherSensor;
+import us.mn.state.dot.tms.WeatherSensorHelper;
 import us.mn.state.dot.tms.geo.Position;
 import static us.mn.state.dot.tms.server.MainServer.FLUSH;
 import static us.mn.state.dot.tms.server.XmlWriter.createAttribute;
@@ -84,8 +86,8 @@ import us.mn.state.dot.tms.utils.MultiString;
  */
 public class DMSImpl extends DeviceImpl implements DMS, Comparable<DMSImpl> {
 
-	/** DMS / hashtag mapping */
-	static private TagMapping mapping;
+	/** DMS / weather sensor mapping */
+	static private TableMapping ess_map;
 
 	/** Test if a sign message is from a specified source */
 	static private boolean isMsgSource(SignMessage sm, SignMsgSource src) {
@@ -120,8 +122,8 @@ public class DMSImpl extends DeviceImpl implements DMS, Comparable<DMSImpl> {
 	/** Load all the DMS */
 	static protected void loadAll() throws TMSException {
 		namespace.registerType(SONAR_TYPE, DMSImpl.class);
-		mapping = new TagMapping(store, "iris", SONAR_TYPE,
-			"hashtag");
+		ess_map = new TableMapping(store, "iris", SONAR_TYPE,
+			WeatherSensor.SONAR_TYPE);
 		store.query("SELECT name, geo_loc, controller, pin, notes, " +
 			"gps, static_graphic, beacon, preset, sign_config, " +
 			"sign_detail, msg_user, msg_sched, msg_current, " +
@@ -241,16 +243,20 @@ public class DMSImpl extends DeviceImpl implements DMS, Comparable<DMSImpl> {
 		expire_time = stampMillis(et);
 		status = st;
 		stuck_pixels = sp;
-		hashtags = lookupHashtagMapping();
+		weather_sensors = lookupEssMapping();
 		initTransients();
 	}
 
-	/** Lookup mapping of hashtags */
-	private String[] lookupHashtagMapping() throws TMSException {
-		TreeSet<String> ht_set = new TreeSet<String>();
-		for (String ht: mapping.lookup(this))
-			ht_set.add(ht);
-		return ht_set.toArray(new String[0]);
+	/** Lookup mapping of RWIS sensors configured to the sign */
+	private WeatherSensorImpl[] lookupEssMapping() throws TMSException {
+		TreeSet<WeatherSensorImpl> ws_set =
+			new TreeSet<WeatherSensorImpl>();
+		for (String o: ess_map.lookup(this)) {
+			WeatherSensor ws = WeatherSensorHelper.lookup(o);
+			if (ws instanceof WeatherSensorImpl)
+				ws_set.add((WeatherSensorImpl) ws);
+		}
+		return ws_set.toArray(new WeatherSensorImpl[0]);
 	}
 
 	/** Destroy an object */
@@ -287,7 +293,22 @@ public class DMSImpl extends DeviceImpl implements DMS, Comparable<DMSImpl> {
 		// user message to prevent it from popping up days later, after
 		// communication is restored.
 		if (!c && getFailMillis() >= COMM_FAIL_BLANK_THRESHOLD_MS)
-			setMsgUserNotify(null);
+			resetMsgUser();
+	}
+
+	/** Reset the user message and log a reset sign event */
+	private void resetMsgUser() {
+		SignMessage sm = msg_user;
+		if (sm != null) {
+			logEvent(new SignEvent(
+				EventType.DMS_MSG_RESET,
+				name,
+				sm.getMulti(),
+				sm.getMsgOwner(),
+				sm.getDuration()
+			));
+		}
+		setMsgUserNotify(null);
 	}
 
 	/** Get the configure flag.
@@ -352,57 +373,26 @@ public class DMSImpl extends DeviceImpl implements DMS, Comparable<DMSImpl> {
 		return static_graphic;
 	}
 
-	/** Hashtags for the DMS */
-	private String[] hashtags = new String[0];
-
-	/** Set the hashtags assigned to the DMS */
+	/** Set the administrator notes */
 	@Override
-	public void setHashtags(String[] ht) {
-		hashtags = ht;
-	}
-
-	/** Set the hashtags assigned to the DMS */
-	public synchronized void doSetHashtags(String[] ht)
-		throws TMSException
-	{
-		String[] ht2 = HashtagHelper.makeHashtags(ht);
-		if (!Arrays.equals(ht, ht2))
-			throw new ChangeVetoException("BAD HASHTAGS");
-		if (!Arrays.equals(ht, hashtags)) {
-			TreeSet<String> ht_set = new TreeSet<String>(
-				Arrays.asList(ht)
-			);
-			mapping.update(this, ht_set);
-			setHashtags(ht);
-			updateStyles();
-		}
+	public void doSetNotes(String n) throws TMSException {
+		super.doSetNotes(n);
+		updateStyles();
 	}
 
 	/** Add a hashtag to the DMS */
-	public synchronized void addHashtagNotify(String aht) {
-		aht = HashtagHelper.normalize(aht);
-		if (aht == null)
+	public synchronized void addHashtagNotify(String ht) {
+		ht = Hashtags.normalize(ht);
+		if (ht == null)
 			return;
-		TreeSet<String> ht_set = new TreeSet<String>(
-			Arrays.asList(hashtags)
-		);
-		if (ht_set.add(aht)) {
-			try {
-				mapping.update(this, ht_set);
-				hashtags = ht_set.toArray(new String[0]);
-				notifyAttribute("hashtags");
-				updateStyles();
-			}
-			catch (TMSException e) {
-				logError("hashtags map: " + e.getMessage());
-			}
+		if (new Hashtags(notes).contains(ht))
+			return;
+		try {
+			doSetNotes(Hashtags.add(notes, ht));
 		}
-	}
-
-	/** Get the hashtags assigned to the DMS */
-	@Override
-	public String[] getHashtags() {
-		return hashtags;
+		catch (TMSException e) {
+			logError("add hashtags: " + e.getMessage());
+		}
 	}
 
 	/** Remote beacon */
@@ -472,6 +462,49 @@ public class DMSImpl extends DeviceImpl implements DMS, Comparable<DMSImpl> {
 		return preset;
 	}
 
+	/** RWIS sensors configured to the sign */
+	private WeatherSensorImpl[] weather_sensors = new WeatherSensorImpl[0];
+
+	/** Set the RWIS sensors configured to the sign */
+	@Override
+	public void setWeatherSensors(WeatherSensor[] ess) {
+		weather_sensors = makeWeatherSensorArray(ess);
+	}
+
+	/** Make an ordered array of weather sensors */
+	private WeatherSensorImpl[] makeWeatherSensorArray(
+		WeatherSensor[] ess)
+	{
+		TreeSet<WeatherSensorImpl> ws_set =
+			new TreeSet<WeatherSensorImpl>();
+		for (WeatherSensor ws: ess) {
+			if (ws instanceof WeatherSensorImpl)
+				ws_set.add((WeatherSensorImpl) ws);
+		}
+		return ws_set.toArray(new WeatherSensorImpl[0]);
+	}
+
+	/** Set the RWIS sensors configured to the sign */
+	public void doSetWeatherSensors(WeatherSensor[] ess)
+		throws TMSException
+	{
+		TreeSet<Storable> ws_set = new TreeSet<Storable>();
+		for (WeatherSensor ws: ess) {
+			if (ws instanceof WeatherSensorImpl)
+				ws_set.add((WeatherSensorImpl) ws);
+			else
+				throw new ChangeVetoException("Invalid ESS");
+		}
+		ess_map.update(this, ws_set);
+		setWeatherSensors(ess);
+	}
+
+	/** Get the RWIS sensors configured to the sign */
+	@Override
+	public WeatherSensor[] getWeatherSensors() {
+		return weather_sensors;
+	}
+
 	/** Sign configuration */
 	private SignConfig sign_config;
 
@@ -526,7 +559,7 @@ public class DMSImpl extends DeviceImpl implements DMS, Comparable<DMSImpl> {
 	public void resetStateNotify() {
 		setStatusNotify(null);
 		setStuckPixelsNotify(null);
-		setMsgUserNotify(null);
+		resetMsgUser();
 		setMsgSchedNotify(null);
 		setMsgCurrentNotify(null);
 	}

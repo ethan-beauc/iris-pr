@@ -1,6 +1,6 @@
 /*
  * IRIS -- Intelligent Roadway Information System
- * Copyright (C) 2009-2023  Minnesota Department of Transportation
+ * Copyright (C) 2009-2024  Minnesota Department of Transportation
  * Copyright (C) 2009-2015  AHMCT, University of California
  * Copyright (C) 2012-2021  Iteris Inc.
  * Copyright (C) 2015-2024  SRF Consulting Group
@@ -101,10 +101,16 @@ public enum SystemAttrEnum {
 	PRICE_MESSAGE_EVENT_PURGE_DAYS(0, 0),
 	ROUTE_MAX_LEGS(8, 1, 20),
 	ROUTE_MAX_MILES(16, 1, 30),
-	RWIS_HIGH_WIND_SPEED_KPH(40, 0),
-	RWIS_LOW_VISIBILITY_DISTANCE_M(152, 0),
-	RWIS_OBS_AGE_LIMIT_SECS(240, 0),
-	RWIS_MAX_VALID_WIND_SPEED_KPH(282, 0),
+	RWIS_OBS_AGE_LIMIT_SECS(900, 0),
+	RWIS_SLIPPERY_1_PERCENT(70, 0),
+	RWIS_SLIPPERY_2_DEGREES(0, -273),
+	RWIS_SLIPPERY_3_PERCENT(60, 0),
+	RWIS_WINDY_1_KPH(64, 0),
+	RWIS_WINDY_2_KPH(96, 0),
+	RWIS_VISIBILITY_1_M(1609, 0),
+	RWIS_VISIBILITY_2_M(402, 0),
+	RWIS_FLOODING_1_MM(6, 0),
+	RWIS_FLOODING_2_MM(8, 0),
 	SAMPLE_ARCHIVE_ENABLE(true),
 	SIGN_EVENT_PURGE_DAYS(0, 0),
 	SPEED_LIMIT_MIN_MPH(45, 0, 100),

@@ -32,6 +32,11 @@ pub struct RoleAnc;
 
 impl AncillaryData for RoleAnc {
     type Primary = Role;
+
+    /// Construct ancillary role data
+    fn new(_pri: &Role, _view: View) -> Self {
+        RoleAnc
+    }
 }
 
 impl Role {
@@ -109,7 +114,7 @@ impl Card for Role {
     }
 
     /// Get changed fields from Setup form
-    fn changed_fields(&self) -> String {
+    fn changed_setup(&self) -> String {
         let mut fields = Fields::new();
         fields.changed_input("enabled", self.enabled);
         fields.into_value().to_string()

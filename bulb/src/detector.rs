@@ -10,9 +10,9 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 //
-use crate::card::{inactive_attr, Card, View};
-use crate::device::{Device, DeviceAnc};
-use crate::util::{ContainsLower, Fields, HtmlStr, Input, OptVal};
+use crate::card::{Card, View};
+use crate::cio::{ControllerIo, ControllerIoAnc};
+use crate::util::{ContainsLower, Fields, HtmlStr, Input};
 use resources::Res;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
@@ -35,33 +35,28 @@ pub struct Detector {
     pub fake: Option<String>,
 }
 
-type DetectorAnc = DeviceAnc<Detector>;
+type DetectorAnc = ControllerIoAnc<Detector>;
 
 impl Detector {
     /// Convert to Compact HTML
     fn to_html_compact(&self, anc: &DetectorAnc) -> String {
         let name = HtmlStr::new(self.name());
-        let item_state = anc.item_state(self);
+        let item_states = anc.item_states(self);
         let label = HtmlStr::new(&self.label);
-        let active = self.controller.is_some()
-            || self
-                .label
-                .as_ref()
-                .filter(|lbl| lbl.ends_with('G'))
-                .is_some();
-        let inactive = inactive_attr(active);
         format!(
-            "<div class='title row'>{name} {item_state}</div>\
-            <div class='info fill{inactive}'>{label}</div>"
+            "<div class='title row'>{name} {item_states}</div>\
+            <div class='info fill'>{label}</div>"
         )
     }
 
     /// Convert to Status HTML
-    fn to_html_status(&self) -> String {
+    fn to_html_status(&self, anc: &DetectorAnc) -> String {
         let title = self.title(View::Status);
+        let item_states = anc.item_states(self).to_html();
         let label = HtmlStr::new(&self.label).with_len(20);
         format!(
             "{title}\
+            <div class='row'>{item_states}</div>\
             <div class='row'>\
               <span class='info'>{label}</span>\
             </div>"
@@ -71,24 +66,15 @@ impl Detector {
     /// Convert to Setup HTML
     fn to_html_setup(&self, anc: &DetectorAnc) -> String {
         let title = self.title(View::Setup);
-        let controller = anc.controller_html();
-        let pin = OptVal(self.pin);
+        let controller = anc.controller_html(self);
+        let pin = anc.pin_html(self.pin);
         let footer = self.footer(true);
-        format!(
-            "{title}\
-            {controller}\
-            <div class='row'>\
-              <label for='pin'>Pin</label>\
-              <input id='pin' type='number' min='1' max='104' \
-                     size='8' value='{pin}'>\
-            </div>\
-            {footer}"
-        )
+        format!("{title}{controller}{pin}{footer}")
     }
 }
 
-impl Device for Detector {
-    /// Get controller
+impl ControllerIo for Detector {
+    /// Get controller name
     fn controller(&self) -> Option<&str> {
         self.controller.as_deref()
     }
@@ -120,21 +106,21 @@ impl Card for Detector {
     fn is_match(&self, search: &str, anc: &DetectorAnc) -> bool {
         self.name.contains_lower(search)
             || self.label.contains_lower(search)
-            || anc.item_state(self).is_match(search)
+            || anc.item_states(self).is_match(search)
     }
 
     /// Convert to HTML view
     fn to_html(&self, view: View, anc: &DetectorAnc) -> String {
         match view {
             View::Create => self.to_html_create(anc),
-            View::Status => self.to_html_status(),
+            View::Status => self.to_html_status(anc),
             View::Setup => self.to_html_setup(anc),
             _ => self.to_html_compact(anc),
         }
     }
 
     /// Get changed fields from Setup form
-    fn changed_fields(&self) -> String {
+    fn changed_setup(&self) -> String {
         let mut fields = Fields::new();
         fields.changed_input("controller", &self.controller);
         fields.changed_input("pin", self.pin);

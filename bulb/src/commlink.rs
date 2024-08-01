@@ -10,17 +10,16 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 //
-use crate::card::{inactive_attr, AncillaryData, Card, View};
+use crate::asset::Asset;
+use crate::card::{AncillaryData, Card, View};
 use crate::commconfig::CommConfig;
 use crate::controller::Controller;
 use crate::error::Result;
-use crate::fetch::Uri;
-use crate::item::ItemState;
+use crate::item::{ItemState, ItemStates};
 use crate::util::{ContainsLower, Fields, HtmlStr, Input, Select};
 use resources::Res;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
-use std::iter::once;
 use wasm_bindgen::JsValue;
 
 /// Comm link
@@ -37,50 +36,58 @@ pub struct CommLink {
 /// Ancillary comm link data
 #[derive(Debug, Default)]
 pub struct CommLinkAnc {
+    assets: Vec<Asset>,
     pub controllers: Option<Vec<Controller>>,
     pub comm_configs: Option<Vec<CommConfig>>,
 }
 
-const CONTROLLER_URI: &str = "/iris/api/controller";
-const COMM_CONFIG_URI: &str = "/iris/api/comm_config";
-
 impl AncillaryData for CommLinkAnc {
     type Primary = CommLink;
 
-    /// Get ancillary URI iterator
-    fn uri_iter(
-        &self,
-        _pri: &CommLink,
-        view: View,
-    ) -> Box<dyn Iterator<Item = Uri>> {
-        match view {
-            View::Status => Box::new(
-                [CONTROLLER_URI.into(), COMM_CONFIG_URI.into()].into_iter(),
-            ),
-            _ => Box::new(once(COMM_CONFIG_URI.into())),
+    /// Construct ancillary comm link data
+    fn new(_pri: &CommLink, view: View) -> Self {
+        let assets = match view {
+            View::Status => {
+                vec![Asset::Controllers, Asset::CommConfigs]
+            }
+            _ => vec![Asset::CommConfigs],
+        };
+        let controllers = None;
+        let comm_configs = None;
+        CommLinkAnc {
+            assets,
+            controllers,
+            comm_configs,
         }
     }
 
-    /// Put ancillary data
-    fn set_data(
+    /// Get next asset to fetch
+    fn asset(&mut self) -> Option<Asset> {
+        self.assets.pop()
+    }
+
+    /// Set asset value
+    fn set_asset(
         &mut self,
         pri: &CommLink,
-        uri: Uri,
-        data: JsValue,
-    ) -> Result<bool> {
-        match uri.as_str() {
-            CONTROLLER_URI => {
+        asset: Asset,
+        value: JsValue,
+    ) -> Result<()> {
+        match asset {
+            Asset::Controllers => {
                 let mut controllers: Vec<Controller> =
-                    serde_wasm_bindgen::from_value(data)?;
+                    serde_wasm_bindgen::from_value(value)?;
                 controllers
                     .retain(|c| c.comm_link.as_deref() == Some(&pri.name));
                 self.controllers = Some(controllers);
             }
-            _ => {
-                self.comm_configs = Some(serde_wasm_bindgen::from_value(data)?);
+            Asset::CommConfigs => {
+                self.comm_configs =
+                    Some(serde_wasm_bindgen::from_value(value)?);
             }
+            _ => unreachable!(),
         }
-        Ok(false)
+        Ok(())
     }
 }
 
@@ -131,33 +138,30 @@ impl CommLinkAnc {
 }
 
 impl CommLink {
-    /// Get item state
-    fn item_state(&self) -> ItemState {
+    /// Get item states
+    fn item_states(&self) -> ItemStates {
         match (self.poll_enabled, self.connected) {
-            (true, true) => ItemState::Available,
-            (true, false) => ItemState::Offline,
-            _ => ItemState::Inactive,
+            (true, true) => ItemState::Available.into(),
+            (true, false) => ItemState::Offline.into(),
+            _ => ItemState::Inactive.into(),
         }
     }
 
     /// Convert to Compact HTML
     fn to_html_compact(&self) -> String {
         let name = HtmlStr::new(self.name());
-        let item_state = self.item_state();
-        let inactive = inactive_attr(self.poll_enabled);
+        let item_states = self.item_states();
         let description = HtmlStr::new(&self.description);
         format!(
-            "<div class='title row'>{name} {item_state}</div>\
-            <div class='info fill{inactive}'>{description}</div>"
+            "<div class='title row'>{name} {item_states}</div>\
+            <div class='info fill'>{description}</div>"
         )
     }
 
     /// Convert to Status HTML
     fn to_html_status(&self, anc: &CommLinkAnc) -> String {
         let title = self.title(View::Status);
-        let item_state = self.item_state();
-        let desc = item_state.description();
-        let inactive = inactive_attr(self.poll_enabled);
+        let item_states = self.item_states().to_html();
         let description = HtmlStr::new(&self.description);
         let comm_config = anc.comm_config_desc(self);
         let config = HtmlStr::new(comm_config);
@@ -165,8 +169,8 @@ impl CommLink {
         format!(
             "{title}\
             <div class='row'>\
-              <span>{item_state} {desc}</span>\
-              <span class='info end{inactive}'>{description}</span>\
+              <span>{item_states}</span>\
+              <span class='info end'>{description}</span>\
             </div>\
             <div class='row'>\
               <span>{config}</span>\
@@ -235,7 +239,7 @@ impl Card for CommLink {
             || self.name.contains_lower(search)
             || anc.comm_config_desc(self).contains_lower(search)
             || self.uri.contains_lower(search)
-            || self.item_state().is_match(search)
+            || self.item_states().is_match(search)
     }
 
     /// Convert to HTML view
@@ -249,7 +253,7 @@ impl Card for CommLink {
     }
 
     /// Get changed fields from Setup form
-    fn changed_fields(&self) -> String {
+    fn changed_setup(&self) -> String {
         let mut fields = Fields::new();
         fields.changed_input("description", &self.description);
         fields.changed_input("uri", &self.uri);

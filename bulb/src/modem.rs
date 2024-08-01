@@ -10,7 +10,8 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 //
-use crate::card::{inactive_attr, AncillaryData, Card, View};
+use crate::card::{AncillaryData, Card, View};
+use crate::item::{ItemState, ItemStates};
 use crate::util::{ContainsLower, Fields, HtmlStr, Input, OptVal};
 use resources::Res;
 use serde::{Deserialize, Serialize};
@@ -32,14 +33,28 @@ pub struct ModemAnc;
 
 impl AncillaryData for ModemAnc {
     type Primary = Modem;
+
+    /// Construct ancillary modem data
+    fn new(_pri: &Modem, _view: View) -> Self {
+        ModemAnc
+    }
 }
 
 impl Modem {
+    /// Get item states
+    fn item_states(&self) -> ItemStates {
+        if self.enabled {
+            ItemState::Available.into()
+        } else {
+            ItemState::Inactive.into()
+        }
+    }
+
     /// Convert to Compact HTML
     fn to_html_compact(&self) -> String {
         let name = HtmlStr::new(self.name());
-        let inactive = inactive_attr(self.enabled);
-        format!("<div class='{inactive}'>{name}</div>")
+        let item_states = self.item_states();
+        format!("<div class='title row'>{name} {item_states}</div>")
     }
 
     /// Convert to Setup HTML
@@ -109,7 +124,7 @@ impl Card for Modem {
     }
 
     /// Get changed fields from Setup form
-    fn changed_fields(&self) -> String {
+    fn changed_setup(&self) -> String {
         let mut fields = Fields::new();
         fields.changed_input("uri", &self.uri);
         fields.changed_input("config", &self.config);

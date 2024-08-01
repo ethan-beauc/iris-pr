@@ -13,10 +13,12 @@
 #![allow(clippy::match_like_matches_macro)]
 mod alarm;
 mod app;
+mod asset;
 mod beacon;
 mod cabinetstyle;
 mod camera;
 mod card;
+mod cio;
 mod commconfig;
 mod commlink;
 mod controller;
@@ -36,6 +38,7 @@ mod lanemarking;
 mod lcsarray;
 mod lcsindication;
 mod modem;
+mod notes;
 mod permission;
 mod rampmeter;
 mod role;

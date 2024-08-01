@@ -10,15 +10,14 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 //
-use crate::card::{inactive_attr, AncillaryData, Card, View};
-use crate::controller::Controller;
+use crate::asset::Asset;
+use crate::card::{AncillaryData, Card, View};
+use crate::cio::{ControllerIo, ControllerIoAnc};
 use crate::error::Result;
-use crate::fetch::Uri;
-use crate::util::{ContainsLower, Fields, HtmlStr, Input, OptVal};
+use crate::util::{ContainsLower, Fields, HtmlStr, Input};
 use resources::Res;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
-use std::iter::{empty, once};
 use wasm_bindgen::JsValue;
 
 /// Lane Use Indications
@@ -39,111 +38,85 @@ pub struct LcsIndication {
     pub pin: Option<u32>,
 }
 
-/// Ancillary gate arm data
-#[derive(Debug, Default)]
+/// Ancillary LCS indication data
+#[derive(Debug)]
 pub struct LcsIndicationAnc {
-    pub controller: Option<Controller>,
-    pub indications: Option<Vec<LaneUseIndication>>,
+    cio: ControllerIoAnc<LcsIndication>,
+    pub indications: Vec<LaneUseIndication>,
 }
 
 impl LcsIndicationAnc {
-    fn controller_button(&self) -> String {
-        match &self.controller {
-            Some(ctrl) => ctrl.button_html(),
-            None => "<span></span>".into(),
-        }
-    }
-
     /// Get indication description
     fn indication(&self, pri: &LcsIndication) -> &str {
-        if let Some(indications) = &self.indications {
-            for indication in indications {
-                if pri.indication == indication.id {
-                    return &indication.description;
-                }
+        for indication in &self.indications {
+            if pri.indication == indication.id {
+                return &indication.description;
             }
         }
         ""
     }
 }
 
-const LANE_USE_INDICATION_URI: &str = "/iris/lut/lane_use_indication";
-
 impl AncillaryData for LcsIndicationAnc {
     type Primary = LcsIndication;
 
-    /// Get URI iterator
-    fn uri_iter(
-        &self,
-        pri: &LcsIndication,
-        view: View,
-    ) -> Box<dyn Iterator<Item = Uri>> {
-        match (view, &pri.controller()) {
-            (View::Control, Some(ctrl)) => {
-                let mut uri = Uri::from("/iris/api/controller/");
-                uri.push(ctrl);
-                Box::new([LANE_USE_INDICATION_URI.into(), uri].into_iter())
-            }
-            (View::Control | View::Search | View::Compact, _) => {
-                Box::new(once(LANE_USE_INDICATION_URI.into()))
-            }
-            _ => Box::new(empty()),
+    /// Construct ancillary LCS indication data
+    fn new(pri: &LcsIndication, view: View) -> Self {
+        let mut cio = ControllerIoAnc::new(pri, view);
+        cio.assets.push(Asset::LaneUseIndications);
+        LcsIndicationAnc {
+            cio,
+            indications: Vec::new(),
         }
     }
 
-    /// Put ancillary data
-    fn set_data(
+    /// Get next asset to fetch
+    fn asset(&mut self) -> Option<Asset> {
+        self.cio.assets.pop()
+    }
+
+    /// Set asset value
+    fn set_asset(
         &mut self,
-        _pri: &LcsIndication,
-        uri: Uri,
-        data: JsValue,
-    ) -> Result<bool> {
-        if uri.as_str() == LANE_USE_INDICATION_URI {
-            self.indications = Some(serde_wasm_bindgen::from_value(data)?);
-        } else {
-            self.controller = Some(serde_wasm_bindgen::from_value(data)?);
+        pri: &LcsIndication,
+        asset: Asset,
+        value: JsValue,
+    ) -> Result<()> {
+        match asset {
+            Asset::LaneUseIndications => {
+                self.indications = serde_wasm_bindgen::from_value(value)?;
+            }
+            _ => self.cio.set_asset(pri, asset, value)?,
         }
-        Ok(false)
+        Ok(())
+    }
+}
+
+impl ControllerIo for LcsIndication {
+    /// Get controller name
+    fn controller(&self) -> Option<&str> {
+        self.controller.as_deref()
     }
 }
 
 impl LcsIndication {
-    /// Get controller
-    fn controller(&self) -> Option<&str> {
-        self.controller.as_deref()
-    }
-
     /// Convert to Compact HTML
     fn to_html_compact(&self, anc: &LcsIndicationAnc) -> String {
         let name = HtmlStr::new(self.name());
-        let inactive = inactive_attr(self.controller.is_some());
+        let item_states = anc.cio.item_states(self);
         let indication = anc.indication(self);
         format!(
-            "<div class='title row'>{name}</div>\
-            <div class='info fill{inactive}'>{indication}</div>"
+            "<div class='title row'>{name} {item_states}</div>\
+            <div class='info fill'>{indication}</div>"
         )
     }
 
     /// Convert to Setup HTML
     fn to_html_setup(&self, anc: &LcsIndicationAnc) -> String {
         let title = self.title(View::Setup);
-        let ctl_btn = anc.controller_button();
-        let controller = HtmlStr::new(&self.controller);
-        let pin = OptVal(self.pin);
-        format!(
-            "{title}\
-            <div class='row'>\
-               <label for='controller'>Controller</label>\
-               <input id='controller' maxlength='20' size='20' \
-                      value='{controller}'>\
-               {ctl_btn}\
-             </div>\
-             <div class='row'>\
-               <label for='pin'>Pin</label>\
-               <input id='pin' type='number' min='1' max='104' \
-                      size='8' value='{pin}'>\
-             </div>"
-        )
+        let controller = anc.cio.controller_html(self);
+        let pin = anc.cio.pin_html(self.pin);
+        format!("{title}{controller}{pin}")
     }
 }
 
@@ -172,6 +145,7 @@ impl Card for LcsIndication {
     /// Check if a search string matches
     fn is_match(&self, search: &str, anc: &LcsIndicationAnc) -> bool {
         self.name.contains_lower(search)
+            || anc.cio.item_states(self).is_match(search)
             || anc.indication(self).contains(search)
     }
 
@@ -185,7 +159,7 @@ impl Card for LcsIndication {
     }
 
     /// Get changed fields from Setup form
-    fn changed_fields(&self) -> String {
+    fn changed_setup(&self) -> String {
         let mut fields = Fields::new();
         fields.changed_input("controller", &self.controller);
         fields.changed_input("pin", self.pin);

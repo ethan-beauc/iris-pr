@@ -1,6 +1,6 @@
 /*
  * IRIS -- Intelligent Roadway Information System
- * Copyright (C) 2010-2019  Minnesota Department of Transportation
+ * Copyright (C) 2010-2024  Minnesota Department of Transportation
  * Copyright (C) 2011  AHMCT, University of California
  * Copyright (C) 2017  Iteris Inc.
  *
@@ -17,6 +17,8 @@
 package us.mn.state.dot.tms;
 
 import java.util.Iterator;
+import java.util.Map;
+import java.util.TreeMap;
 import us.mn.state.dot.sched.TimeSteward;
 
 /**
@@ -44,50 +46,6 @@ public class WeatherSensorHelper extends BaseHelper {
 			WeatherSensor.SONAR_TYPE));
 	}
 
-	/** Test if the sensor has triggered an AWS state (e.g. high wind) */
-	static public boolean isAwsState(WeatherSensor proxy) {
-		return isHighWind(proxy) || isLowVisibility(proxy);
-	}
-
-	/** Get the high wind limit in kph */
-	static public int getHighWindLimitKph() {
-		return SystemAttrEnum.RWIS_HIGH_WIND_SPEED_KPH.getInt();
-	}
-
-	/** Is wind speed high? */
-	static public boolean isHighWind(WeatherSensor ws) {
-		if (isSampleExpired(ws))
-			return false;
-		Integer s = ws.getWindSpeed();
-		if (s == null)
-			return false;
-		int t = getHighWindLimitKph();
-		int m = getMaxValidWindSpeedKph();
-		if (m <= 0)
-			return s > t;
-		else
-			return s > t && s <= m;
-	}
-
-	/** Get the low visibility limit in meters */
-	static public int getLowVisLimitMeters() {
-		return SystemAttrEnum.RWIS_LOW_VISIBILITY_DISTANCE_M.getInt();
-	}
-
-	/** Is visibility low? */
-	static public boolean isLowVisibility(WeatherSensor ws) {
-		if (isSampleExpired(ws))
-			return false;
-		Integer v = ws.getVisibility();
-		return v != null && v < getLowVisLimitMeters();
-	}
-
-	/** Get the maximum valid wind speed (kph).
-	 * @return Max valid wind speed (kph) or 0 for no maximum. */
-	static public int getMaxValidWindSpeedKph() {
-		return SystemAttrEnum.RWIS_MAX_VALID_WIND_SPEED_KPH.getInt();
-	}
-
 	/** Check if the sample data has expired */
 	static public boolean isSampleExpired(WeatherSensor ws) {
 		if (ws != null) {
@@ -102,9 +60,9 @@ public class WeatherSensorHelper extends BaseHelper {
 
 	/** Get the sensor observation age limit (secs).
 	 * @return The sensor observation age limit. Valid observations have
-	 *	   an age less than or equal to this value. Zero indicates 
+	 *	   an age less than or equal to this value.  Zero indicates
 	 *	   observations never expire. */
-	static public int getObsAgeLimitSecs() {
+	static private int getObsAgeLimitSecs() {
 		return SystemAttrEnum.RWIS_OBS_AGE_LIMIT_SECS.getInt();
 	}
 
@@ -129,5 +87,16 @@ public class WeatherSensorHelper extends BaseHelper {
 				return "heavy";
 		} else
 			return "";
+	}
+
+	/** Get a sorted map of values to be shown in device tool-tip */
+	//FIXME: Rewrite when we get a more robust RWIS implementation 
+	public Map<String, Object> getTooltipMap(WeatherSensor ws) {
+		Map<String, Object> map = new TreeMap<String, Object>();
+		map.put("MaxWindGustSpeed", ws.getMaxWindGustSpeed());
+		map.put("Visibility", ws.getVisibility());
+		map.put("SurfTemp", ws.getSurfTemp());
+		map.put("PvmtFriction", ws.getPvmtFriction());
+		return map;
 	}
 }

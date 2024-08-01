@@ -10,9 +10,9 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 //
-use crate::card::{inactive_attr, Card, View};
-use crate::device::{Device, DeviceAnc};
-use crate::util::{ContainsLower, Fields, HtmlStr, Input, OptVal};
+use crate::card::{Card, View};
+use crate::cio::{ControllerIo, ControllerIoAnc};
+use crate::util::{ContainsLower, Fields, HtmlStr, Input};
 use resources::Res;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
@@ -27,18 +27,17 @@ pub struct VideoMonitor {
     pub pin: Option<u32>,
 }
 
-type VideoMonitorAnc = DeviceAnc<VideoMonitor>;
+type VideoMonitorAnc = ControllerIoAnc<VideoMonitor>;
 
 impl VideoMonitor {
     /// Convert to Compact HTML
     fn to_html_compact(&self, anc: &VideoMonitorAnc) -> String {
         let name = HtmlStr::new(self.name());
-        let item_state = anc.item_state(self);
-        let inactive = inactive_attr(self.controller.is_some());
+        let item_states = anc.item_states(self);
         let mon_num = self.mon_num;
         format!(
-            "<div class='title row'>{name} {item_state}</div>\
-            <div class='info fill{inactive}'>{mon_num}</div>"
+            "<div class='title row'>{name} {item_states}</div>\
+            <div class='info fill'>{mon_num}</div>"
         )
     }
 
@@ -57,24 +56,15 @@ impl VideoMonitor {
     /// Convert to Setup HTML
     fn to_html_setup(&self, anc: &VideoMonitorAnc) -> String {
         let title = self.title(View::Setup);
-        let controller = anc.controller_html();
-        let pin = OptVal(self.pin);
+        let controller = anc.controller_html(self);
+        let pin = anc.pin_html(self.pin);
         let footer = self.footer(true);
-        format!(
-            "{title}\
-            {controller}\
-            <div class='row'>\
-              <label for='pin'>Pin</label>\
-              <input id='pin' type='number' min='1' max='104' \
-                     size='8' value='{pin}'>\
-            </div>\
-            {footer}"
-        )
+        format!("{title}{controller}{pin}{footer}")
     }
 }
 
-impl Device for VideoMonitor {
-    /// Get controller
+impl ControllerIo for VideoMonitor {
+    /// Get controller name
     fn controller(&self) -> Option<&str> {
         self.controller.as_deref()
     }
@@ -106,7 +96,7 @@ impl Card for VideoMonitor {
     fn is_match(&self, search: &str, anc: &VideoMonitorAnc) -> bool {
         self.name.contains_lower(search)
             || self.mon_num.to_string().contains(search)
-            || anc.item_state(self).is_match(search)
+            || anc.item_states(self).is_match(search)
     }
 
     /// Convert to HTML view
@@ -120,7 +110,7 @@ impl Card for VideoMonitor {
     }
 
     /// Get changed fields from Setup form
-    fn changed_fields(&self) -> String {
+    fn changed_setup(&self) -> String {
         let mut fields = Fields::new();
         fields.changed_input("controller", &self.controller);
         fields.changed_input("pin", self.pin);

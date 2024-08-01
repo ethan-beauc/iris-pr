@@ -1,7 +1,8 @@
 /*
  * IRIS -- Intelligent Roadway Information System
- * Copyright (C) 2010-2022  Minnesota Department of Transportation
+ * Copyright (C) 2010-2024  Minnesota Department of Transportation
  * Copyright (C) 2017-2021  Iteris Inc.
+ * Copyright (C) 2023-2024  SRF Consulting Group
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,14 +23,14 @@ import java.util.HashMap;
 import java.util.Map;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import us.mn.state.dot.sched.TimeSteward;
 import us.mn.state.dot.sonar.SonarException;
-import us.mn.state.dot.tms.Controller;
 import us.mn.state.dot.tms.DeviceRequest;
 import us.mn.state.dot.tms.GeoLoc;
 import us.mn.state.dot.tms.GeoLocHelper;
+import us.mn.state.dot.tms.SystemAttrEnum;
 import us.mn.state.dot.tms.TMSException;
 import us.mn.state.dot.tms.WeatherSensor;
-import us.mn.state.dot.tms.WeatherSensorHelper;
 import us.mn.state.dot.tms.geo.Position;
 import us.mn.state.dot.tms.utils.SString;
 import static us.mn.state.dot.tms.server.Constants.MISSING_DATA;
@@ -42,16 +43,18 @@ import us.mn.state.dot.tms.server.comm.WeatherPoller;
  * precipitation rates, visibility, wind speed, etc. Weather sensor
  * drivers support:
  *   Optical Scientific ORG-815 optical rain gauge
- *   SSI CSV file interface
  *   Campbell Scientific CR1000 V27.05
  *   Vaisala dmc586 2.4.16
  *   QTT LX-RPU Elite Model Version 1.23
  *
  * @author Douglas Lau
  * @author Michael Darter
+ * @author Gordon Parikh
+ * @author John L. Stanley
  */
-public class WeatherSensorImpl extends DeviceImpl implements WeatherSensor {
-
+public class WeatherSensorImpl extends DeviceImpl implements WeatherSensor,
+	Comparable<WeatherSensorImpl>
+{
 	/** Sample period for weather sensors (seconds) */
 	static private final int SAMPLE_PERIOD_SEC = 60;
 
@@ -103,6 +106,12 @@ public class WeatherSensorImpl extends DeviceImpl implements WeatherSensor {
 	@Override
 	public String getTypeName() {
 		return SONAR_TYPE;
+	}
+
+	/** Compare to another weather sensor */
+	@Override
+	public int compareTo(WeatherSensorImpl o) {
+		return name.compareTo(o.name);
 	}
 
 	/** Create a weather sensor */
@@ -321,7 +330,14 @@ public class WeatherSensorImpl extends DeviceImpl implements WeatherSensor {
 	/** Get the max wind gust speed in KPH (null if missing) */
 	@Override
 	public Integer getMaxWindGustSpeed() {
-		return max_wind_gust_speed;
+		switch (test_rwis) {
+		case 1:
+			return SystemAttrEnum.RWIS_WINDY_1_KPH.getInt() + 1;
+		case 2:
+			return SystemAttrEnum.RWIS_WINDY_2_KPH.getInt() + 1;
+		default:
+			return max_wind_gust_speed;
+		}
 	}
 
 	/** Set the max wind gust speed in KPH
@@ -514,7 +530,14 @@ public class WeatherSensorImpl extends DeviceImpl implements WeatherSensor {
 	/** Get precipitation 1h in mm (null for missing) */
 	@Override
 	public Integer getPrecipOneHour() {
-		return precip_one_hour;
+		switch (test_rwis) {
+		case 1:
+			return SystemAttrEnum.RWIS_FLOODING_1_MM.getInt() + 1;
+		case 2:
+			return SystemAttrEnum.RWIS_FLOODING_2_MM.getInt() + 1;
+		default:
+			return precip_one_hour;
+		}
 	}
 
 	/** Set precipitation 1h in mm (null for missing) */
@@ -531,7 +554,14 @@ public class WeatherSensorImpl extends DeviceImpl implements WeatherSensor {
 	/** Get visibility in meters (null for missing) */
 	@Override
 	public Integer getVisibility() {
-		return visibility_m;
+		switch (test_rwis) {
+		case 1:
+			return SystemAttrEnum.RWIS_VISIBILITY_1_M.getInt() - 1;
+		case 2:
+			return SystemAttrEnum.RWIS_VISIBILITY_2_M.getInt() - 1;
+		default:
+			return visibility_m;
+		}
 	}
 
 	/** Set visibility in meters (null for missing) */
@@ -641,6 +671,29 @@ public class WeatherSensorImpl extends DeviceImpl implements WeatherSensor {
 		if (!objectEquals(v, subsurf_temp)) {
 			subsurf_temp = v;
 			notifyAttribute("subSurfTemp");
+		}
+	}
+
+	/** Pavement friction (null for missing) */
+	private transient Integer pvmt_friction;
+
+	/** Get pavement friction (null for missing) */
+	@Override
+	public Integer getPvmtFriction() {
+		switch (test_rwis) {
+		case 1:
+		case 2:
+			return SystemAttrEnum.RWIS_SLIPPERY_1_PERCENT.getInt() - 1;
+		default:
+			return pvmt_friction;
+		}
+	}
+
+	/** Set pavement friction (null for missing) */
+	public void setPvmtFrictionNotify(Integer v) {
+		if (!objectEquals(v, pvmt_friction)) {
+			pvmt_friction = v;
+			notifyAttribute("pvmtFriction");
 		}
 	}
 
@@ -796,7 +849,13 @@ public class WeatherSensorImpl extends DeviceImpl implements WeatherSensor {
 	 * @return Time as long */
 	@Override
 	public Long getStamp() {
-		return stamp;
+		switch (test_rwis) {
+			case 1:
+			case 2:
+				return TimeSteward.currentTimeMillis();
+			default:
+				return stamp;
+		}
 	}
 
 	/** Get the time stamp as a string */
@@ -807,6 +866,7 @@ public class WeatherSensorImpl extends DeviceImpl implements WeatherSensor {
 
 	/** Set the time stamp for the current sample */
 	public void setStampNotify(Long s) {
+		test_rwis = 0;
 		try {
 			store.update(this, "sample_time", asTimestamp(s));
 			stamp = s;
@@ -818,6 +878,9 @@ public class WeatherSensorImpl extends DeviceImpl implements WeatherSensor {
 		}
 	}
 
+	/** Test RWIS conditions level */
+	private transient int test_rwis = 0;
+
 	/** Get a weather sensor poller */
 	private WeatherPoller getWeatherPoller() {
 		DevicePoller dp = getPoller();
@@ -827,6 +890,14 @@ public class WeatherSensorImpl extends DeviceImpl implements WeatherSensor {
 	/** Send a device request operation */
 	@Override
 	protected void sendDeviceRequest(DeviceRequest dr) {
+		if (dr == DeviceRequest.TEST_RWIS_1) {
+			test_rwis = 1;
+			return;
+		}
+		if (dr == DeviceRequest.TEST_RWIS_2) {
+			test_rwis = 2;
+			return;
+		}
 		WeatherPoller p = getWeatherPoller();
 		if (p != null)
 			p.sendRequest(this, dr);
@@ -933,5 +1004,4 @@ public class WeatherSensorImpl extends DeviceImpl implements WeatherSensor {
 		w.write(createAttribute("time_stamp", getStampString()));
 		w.write("/>\n");
 	}
-
 }

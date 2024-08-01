@@ -14,8 +14,9 @@ The following features are supported:
 * Querying or sending [font]s
 * Sending [graphic] images to be displayed
 * [Travel time] estimation
-* [Variable speed] advisories
+* Road weather information system ([RWIS]) messages
 * [Slow traffic] warnings
+* [Tolling] messages for congestion pricing
 * Free-form text entry with banned [word] checks
 
 <details>
@@ -30,7 +31,7 @@ The following features are supported:
 |--------------|------------------------------------------|---------------|
 | 👁️  View      | name, location, msg\_current, has_faults | sign\_config, sign\_detail, geo\_loc, msg\_sched, expire\_time, status, stuck\_pixels |
 | 👉 Operate   |                                          | msg\_user     |
-| 💡 Manage    | notes, hashtags                          | preset, device\_req † |
+| 💡 Manage    | notes                                    | preset, device\_request † |
 | 🔧 Configure | controller                               | pin, static\_graphic, beacon |
 
 † _Write only_
@@ -44,8 +45,8 @@ Checks of [free-form text] are also affected by the access level.
 The DMS properties form has setup information.
 
 Field          | Description
----------------|------------------------------------------------
-Hashtags       | space-separated list of [hashtag]s for the sign
+---------------|---------------------------------------------------
+Notes          | administrator notes, possibly including [hashtag]s
 Remote beacon  | beacon activated automatically when sign deployed
 Static graphic | image of static sign in which DMS is inset
 
@@ -109,9 +110,10 @@ message.  The server then performs a validation check ensuring the user has
 [message pattern]: message_patterns.html
 [NTCIP]: protocols.html#ntcip
 [permissions]: permissions.html
+[rwis]: rwis.html
 [sign configuration]: sign_configuration.html
 [sign message]: sign_message.html
 [Slow traffic]: slow_warning.html
+[tolling]: tolling.html
 [travel time]: travel_time.html
-[variable speed]: vsa.html
 [word]: words.html
