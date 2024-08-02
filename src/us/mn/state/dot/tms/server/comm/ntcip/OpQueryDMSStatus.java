@@ -1,6 +1,6 @@
 /*
  * IRIS -- Intelligent Roadway Information System
- * Copyright (C) 2000-2023  Minnesota Department of Transportation
+ * Copyright (C) 2000-2024  Minnesota Department of Transportation
  * Copyright (C) 2023       SRF Consulting Group
  *
  * This program is free software; you can redistribute it and/or modify
@@ -63,8 +63,14 @@ public class OpQueryDMSStatus extends OpDMS {
 		int val = value.getInteger();
 		int mx = max.getInteger();
 		return (val >= 0 && val <= mx)
-		      ? Math.round(((float) val) / mx)
+		      ? Math.round((val * 100.0f) / mx)
 		      : null;
+	}
+
+	/** Get photocell reading */
+	static private String getReading(ASN1Integer reading) {
+		Integer r = getPercent(reading);
+		return (r != null) ? r.toString() : "invalid";
 	}
 
 	/** Scale power supply voltage */
@@ -72,7 +78,7 @@ public class OpQueryDMSStatus extends OpDMS {
 		return (value >= 0 && value <= 65535) ? (value / 100f) : null;
 	}
 
-	/** Photocell level (composite) */
+	/** Photocell level (virtual) */
 	private final ASN1Integer p_level =
 		dmsIllumPhotocellLevelStatus.makeInt();
 
@@ -435,34 +441,48 @@ public class OpQueryDMSStatus extends OpDMS {
 			logQuery(reading);
 			JSONObject photocell = new JSONObject();
 			photocell.put("description", desc.getValue());
-			if (s_stat.getEnum().isError())
-				photocell.put("error", s_stat.getValue());
-			photocell.put("reading", getPercent(reading));
+			photocell.put("reading", (s_stat.getEnum().isError())
+				? s_stat.getValue()
+				: getReading(reading)
+			);
 			photocells.put(photocell);
 			row++;
 			if (row <= n_sensors)
 				return this;
 			else {
-				photocells.put(compositePhotocell());
+				photocell = virtualPhotocell();
+				if (photocell != null)
+					photocells.put(photocell);
 				putStatus(DMS.PHOTOCELLS, photocells);
 				return vendorStatus();
 			}
 		}
 	}
 
-	/** Get the composite photocell value */
-	private JSONObject compositePhotocell() {
-		JSONObject photocell = new JSONObject();
-		photocell.put("description", "composite");
-		photocell.put("error", compositePhotocellError());
-		photocell.put("reading", getPercent(p_level, max_level));
-		return photocell;
+	/** Get the virtual photocell value */
+	private JSONObject virtualPhotocell() {
+		String r = virtualPhotocellReading();
+		if (r != null) {
+			JSONObject photocell = new JSONObject();
+			photocell.put("description", "virtual");
+			photocell.put("reading", r);
+			return photocell;
+		} else
+			return null;
 	}
 
-	/** Get the composite photocell error */
-	private String compositePhotocellError() {
-		int err = shortError.getInteger();
-		return ShortErrorStatus.PHOTOCELL.isSet(err) ? "fail" : null;
+	/** Get the virtual photocell reading */
+	private String virtualPhotocellReading() {
+		Integer r = getPercent(p_level, max_level);
+		if (r != null)
+			return r.toString();
+		else {
+			int err = shortError.getInteger();
+			if (ShortErrorStatus.PHOTOCELL.isSet(err))
+				return "fail";
+			else
+				return null;
+		}
 	}
 
 	/** Get phase to query vendor-specific status objects */
