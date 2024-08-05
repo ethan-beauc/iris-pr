@@ -45,6 +45,10 @@ import us.mn.state.dot.tms.server.comm.snmp.NoSuchName;
  */
 public class OpQueryDMSStatus extends OpDMS {
 
+	/** Valid temperature range (non-inclusive) */
+	static private final int TEMP_MIN = -128;
+	static private final int TEMP_MAX = 127;
+
 	/** Get the pixel maintenance threshold */
 	static private int pixelMaintThreshold() {
 		return SystemAttrEnum.DMS_PIXEL_MAINT_THRESHOLD.getInt();
@@ -73,9 +77,12 @@ public class OpQueryDMSStatus extends OpDMS {
 		return (r != null) ? r.toString() : "invalid";
 	}
 
-	/** Scale power supply voltage */
-	static private Float scaleVoltage(int value) {
-		return (value >= 0 && value <= 65535) ? (value / 100f) : null;
+	/** Get power supply voltage */
+	static private String getVoltage(ASN1Integer voltage) {
+		Integer v = voltage.getInteger();
+		return (v >= 0 && v <= 65535)
+		      ? Float.toString(v / 100f)
+		      : "invalid";
 	}
 
 	/** Photocell level (virtual) */
@@ -368,11 +375,9 @@ public class OpQueryDMSStatus extends OpDMS {
 			JSONObject supply = new JSONObject();
 			supply.put("description", desc.getValue());
 			supply.put("supply_type", p_type.getValue());
-			if (p_stat.getEnum().isError())
-				supply.put("error", p_stat.getValue());
-			supply.put("detail", mfr_status.getValue());
-			supply.put("voltage",
-				scaleVoltage(voltage.getInteger()));
+			supply.put("voltage", (p_stat.getEnum().isError())
+				? p_stat.getEnum().getDetail(mfr_status)
+				: getVoltage(voltage));
 			supplies.put(supply);
 			if (p_stat.getEnum() == DmsPowerStatus.powerFail)
 				n_failed++;
@@ -635,10 +640,18 @@ public class OpQueryDMSStatus extends OpDMS {
 			logQuery(max_temp);
 			int mn = min_temp.getInteger();
 			int mx = max_temp.getInteger();
-			if (mn <= mx) {
-				putStatus(min_key, mn);
-				putStatus(max_key, mx);
+			boolean mn_valid = (mn > TEMP_MIN && mn < TEMP_MAX);
+			boolean mx_valid = (mx > TEMP_MIN && mx < TEMP_MAX);
+			if (mn_valid && mx_valid && mn > mx) {
+				// swap min/max temps
+				int v = mn;
+				mn = mx;
+				mx = v;
 			}
+			if (mn_valid)
+				putStatus(min_key, mn);
+			if (mx_valid)
+				putStatus(max_key, mx);
 		}
 		catch (NoSuchName e) {
 			// Some signs don't have all temperature objects.
