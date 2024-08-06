@@ -25,6 +25,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::fmt;
 use std::hash::{Hash, Hasher};
+use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
 use tokio_postgres::Row;
 
@@ -934,7 +935,7 @@ impl SegmentState {
     pub fn write_loc_markers(&self) -> Result<()> {
         let dir = Path::new(LOAM_PATH);
         for (res, locs) in self.markers.iter() {
-            for zoom in 11..=18 {
+            for zoom in zoom_levels(*res) {
                 let sz = 800_000.0 * zoom_scale(zoom);
                 let mut loam = PathBuf::from(dir);
                 loam.push(format!("{}_{zoom}.loam", res.as_str()));
@@ -944,7 +945,7 @@ impl SegmentState {
                         let norm = self.loc_normal(loc);
                         let values = loc.values();
                         let mut polygon = Polygons::new(values);
-                        polygon.push_outer(dms_marker(pt, norm, sz));
+                        polygon.push_outer(loc_marker(*res, pt, norm, sz));
                         writer.push(&polygon)?;
                     }
                 }
@@ -970,6 +971,57 @@ fn zoom_scale(zoom: u32) -> f64 {
     1.0 / f64::from(1 << zoom)
 }
 
+/// Get range of zoom levels for a resource
+fn zoom_levels(res: Res) -> RangeInclusive<u32> {
+    match res {
+        Res::Beacon => 10..=18,
+        Res::Dms => 11..=18,
+        Res::WeatherSensor => 10..=18,
+        _ => unimplemented!(),
+    }
+}
+
+/// Make a resource location marker
+fn loc_marker(res: Res, pt: Pt<f64>, norm: f64, sz: f64) -> Vec<Pt<f64>> {
+    match res {
+        Res::Beacon => beacon_marker(pt, norm, sz),
+        Res::Dms => dms_marker(pt, norm, sz),
+        Res::WeatherSensor => weather_sensor_marker(pt, sz),
+        _ => unimplemented!(),
+    }
+}
+
+/// Make beacon marker
+fn beacon_marker(pt: Pt<f64>, norm: f64, sz: f64) -> Vec<Pt<f64>> {
+    const S2: f64 = std::f64::consts::SQRT_2;
+    const S1: f64 = 2.0 - S2;
+    let t = Transform::with_scale(sz, sz)
+        .rotate(norm)
+        .translate(pt.x, pt.y);
+    vec![
+        // base
+        Pt::from((0.0, -2.0)) * t,
+        Pt::from((S1, -S2)) * t,
+        Pt::from((S2, -S2)) * t,
+        Pt::from((S2, -S1)) * t,
+        Pt::from((2.0, 0.0)) * t,
+        Pt::from((S2, S1)) * t,
+        Pt::from((S2, S2)) * t,
+        Pt::from((S1, S2)) * t,
+        // point
+        Pt::from((0.0, 3.0)) * t,
+        Pt::from((-S1, S2)) * t,
+        Pt::from((-S2, S2)) * t,
+        Pt::from((-S2, S1)) * t,
+        Pt::from((-2.0, 0.0)) * t,
+        Pt::from((-S2, -S1)) * t,
+        Pt::from((-S2, -S2)) * t,
+        Pt::from((-S1, -S2)) * t,
+        // close
+        Pt::from((0.0, -2.0)) * t,
+    ]
+}
+
 /// Make DMS marker
 fn dms_marker(pt: Pt<f64>, norm: f64, sz: f64) -> Vec<Pt<f64>> {
     let t = Transform::with_scale(sz, sz)
@@ -989,5 +1041,18 @@ fn dms_marker(pt: Pt<f64>, norm: f64, sz: f64) -> Vec<Pt<f64>> {
         Pt::from((1.0, 1.0)) * t,
         Pt::from((0.0, 1.0)) * t,
         Pt::from((0.0, 0.0)) * t,
+    ]
+}
+
+/// Make weather sensor marker
+fn weather_sensor_marker(pt: Pt<f64>, sz: f64) -> Vec<Pt<f64>> {
+    let t = Transform::with_scale(sz, sz).translate(pt.x, pt.y);
+    vec![
+        Pt::from((-3.0, -2.0)) * t,
+        Pt::from((-3.0, 2.0)) * t,
+        Pt::from((3.0, 1.0)) * t,
+        Pt::from((2.0, 0.0)) * t,
+        Pt::from((3.0, -1.0)) * t,
+        Pt::from((-3.0, -2.0)) * t,
     ]
 }
