@@ -8,3 +8,5 @@ cp static/bulb.css pkg/
 cp static/favicon.png pkg/
 cp static/iris.svg pkg/
 cp static/map.js pkg/
+cp static/bulb-tabs.js pkg/
+cp static/number-style.js pkg/

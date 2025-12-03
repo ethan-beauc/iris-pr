@@ -1,9 +1,8 @@
 body {
-  background-color: #bbb;
+  background-color: var(--bulb-bg);
   font-family: "Overpass";
 }
 label {
-  text-indent: 0.4rem;
   margin: 0.1rem;
 }
 span {
@@ -13,9 +12,6 @@ span {
 details summary {
   padding-left: 0.2rem;
   cursor: pointer;
-}
-textarea {
-  resize: none;
 }
 img {
   object-fit: contain;
@@ -66,61 +62,6 @@ th, td {
   border-color: red;
 }
 
-button {
-  appearance: none;
-  display: inline-block;
-  border: 1px solid #888;
-  border-radius: 0.2rem;
-  padding: 0.1rem 0.2rem;
-  background-color: #eee;
-  color: black;
-  cursor: pointer;
-}
-button:hover {
-  background-color: #ccc;
-}
-button:active {
-  background-color: #bbb;
-}
-button:disabled {
-  background-color: #888;
-}
-button.go_link {
-  font-size: smaller;
-  padding: 0 0.2rem;
-}
-
-/* Checkbox toggle buttons:
- *
- * <input id='the_id' type='checkbox' class='toggle'>
- * <label for='the_id'>...</label>
- */
-.toggle {
-  display: none;
-}
-.toggle + label {
-  background-color: #eee;
-  font-size: 80%;
-  border: 1px solid #888;
-  border-radius: 0.2rem;
-  padding: 0.3rem;
-  text-indent: 0;
-  color: black;
-  cursor: pointer;
-}
-.toggle + label:hover {
-  background-color: #ccc;
-}
-.toggle:active + label {
-  background-color: #bbb;
-}
-.toggle:checked + label {
-  background-color: #3584e4;
-}
-.toggle:checked + label:hover {
-  background-color: #26e;
-}
-
 .root {
   position: fixed;
   top: 0;
@@ -131,25 +72,29 @@ button.go_link {
 }
 
 #mapid {
-  display: none;
+  display: block;
+  flex: 3 1 60%;
 }
 #sidebar {
   position: relative;
   display: flex;
   flex-direction: column;
   user-select: none;
-  flex: 0 1 100%;
+  flex: 2 0 40%;
   justify-content: start;
   margin: 0.2rem;
   background-image: url(iris.svg);
   background-repeat: no-repeat;
   background-position: center;
+  max-width: 40%;
 }
 .sb_row {
   flex: 0 1;
   display: flex;
   flex-direction: row;
   justify-content: flex-end;
+  align-items: center;
+  min-width: 0;
 }
 /* Align widgets at top on sidebar */
 .sb_row > * {
@@ -163,24 +108,11 @@ label:has(+ #sb_resource) {
 #sb_resource {
   margin-left: 0.1rem;
 }
-#sb_search {
-  margin-left: 0;
-}
 
 #sb_list {
   flex: 1 0;
   margin-top: 0.1rem;
   overflow-y: auto;
-}
-
-@media screen and (min-width: 36rem) {
-  #mapid {
-    display: block;
-    flex: 3 1 60%;
-  }
-  #sidebar {
-    flex: 2 0 40%;
-  }
 }
 
 /* Delete button sliding "confirmation" animation */
@@ -200,7 +132,7 @@ label:has(+ #sb_resource) {
   left: -100%;
   top: 0;
   content: "";
-  background-color: #bbb;
+  background-color: #333;
 }
 #ob_delete:active::before {
   transition: left 1s;
@@ -243,12 +175,15 @@ label:has(+ #sb_resource) {
   height: 100%;
   top: 0;
   left: 100%;
-  background-color: rgba(238, 238, 238, 0.85);
+  background-color: var(--bulb-bg);
 }
 #sb_login.show {
   visibility: visible;
   left: 0;
   transition: left 100ms ease-in-out;
+}
+#sb_login label {
+  align-content: center;
 }
 
 .tooltip {
@@ -281,33 +216,43 @@ label:has(+ #sb_resource) {
 /* item state classes for tooltip backgrounds */
 .item_available {
   background-color: #004;
+  width: max-content;
 }
 .item_incident {
   background-color: #600;
+  width: max-content;
 }
 .item_deployed {
   background-color: #440;
+  width: max-content;
 }
 .item_planned {
   background-color: #044;
+  width: max-content;
 }
 .item_external {
   background-color: #040;
+  width: max-content;
 }
 .item_dedicated {
   background-color: #404;
+  width: max-content;
 }
 .item_fault {
   background-color: #420;
+  width: max-content;
 }
 .item_offline {
   background-color: #444;
+  width: max-content;
 }
 .item_inactive {
   background-color: #400;
+  width: max-content;
 }
 .item_unknown {
   background-color: #400;
+  width: max-content;
 }
 
 .cards {
@@ -334,19 +279,19 @@ label:has(+ #sb_resource) {
   padding-left: 0.2rem;
   padding-right: 0.2rem;
   margin: 0.1rem;
-  background-color: #eee;
+  background-color: #666;
   border-radius: 0.1rem;
   box-shadow: 0.2rem 0.2rem 0.2rem 0 rgba(0, 0, 0, 0.2);
 }
 .card-compact:hover {
   box-shadow: 0.2rem 0.2rem 0.2rem 0 rgba(0, 0, 0, 0.5);
-  background-color: #ccc;
+  background-color: #777;
 }
 .card-form {
   flex: 0 1 100%;
   display: flex;
   flex-direction: column;
-  background-color: #eee;
+  background-color: var(--bulb-bg);
   overflow: hidden;
   padding: 0.1rem 0.2rem;
   margin: 0.1rem;
@@ -360,7 +305,7 @@ label:has(+ #sb_resource) {
 .info {
   font-style: italic;
   font-size: smaller;
-  color: #448;
+  color: var(--bulb-accent);
   overflow: hidden;
   text-overflow: ellipsis;
   /* padding keeps italic text from overflowing */
@@ -545,4 +490,329 @@ label:has(+ #sb_resource) {
 }
 .tiny {
   font-size: xx-small;
+}
+
+/* Root (global) variables */
+:root {
+  --bulb-bg: #333;
+  --bulb-fg: #222;
+  --bulb-text: #f0e8db;
+  --bulb-placeholder: #989287;
+  --bulb-accent: #6fdaee;
+  --bulb-accent-rgb: 111,218,238;
+  --bulb-height: 44px;
+  --bulb-inset: #777;
+}
+
+body, input, select, option, button, textarea {
+  color: var(--bulb-text);
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+}
+
+#sb_config,
+#sb_fullscreen {
+  flex: 0 0 auto;
+  margin-left: 6px;
+}
+
+input,
+select,
+button,
+option,
+.toggle + label {
+  box-sizing: border-box;
+  -webkit-appearance: none;
+  appearance: none;
+  background-color: var(--bulb-fg);
+  border: none;
+  border-radius: 0;
+  color: var(--bulb-text);
+  padding: 8px 12px;
+  font-size: medium;
+  line-height: 1;
+  height: var(--bulb-height);
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  transition: background-color 120ms linear, color 120ms linear, border-color 120ms linear;
+  box-shadow: none;
+}
+
+.toggle {
+  display: none;
+}
+.toggle + label {
+  text-indent: 0px;
+  cursor: pointer;
+}
+.toggle + label:hover {
+  background-color: rgba(var(--bulb-accent-rgb), 0.04);
+  border-color: rgba(var(--bulb-accent-rgb), 0.06);
+}
+.toggle:active + label {
+  background-color: var(--bulb-fg);
+}
+.toggle:checked + label {
+  background-color: rgba(var(--bulb-accent-rgb), 0.12);
+  border-color: rgba(var(--bulb-accent-rgb), 0.16);
+  font-weight: 600;
+}
+.toggle:checked + label:hover {
+  background-color: rgba(var(--bulb-accent-rgb), 0.16);
+  border-color: rgba(var(--bulb-accent-rgb), 0.2);
+  font-weight: 600;
+}
+
+
+input[type="search"],
+#login_user,
+#login_pass {
+  justify-items: unset;
+}
+
+input[type="search"]::-webkit-search-cancel-button {
+  display: none;
+}
+
+textarea {
+  -webkit-appearance: none;
+  appearance: none;
+  background-color: var(--bulb-fg);
+  border: none;
+  border-radius: 0;
+  color: var(--bulb-text);
+  font-size: medium;
+  min-height: 10vh;
+  max-width: 60%;
+  width: -webkit-fill-available;
+  transition: background-color 120ms linear, color 120ms linear, border-color 120ms linear;
+  box-shadow: none;
+  resize: none;
+}
+
+option {
+  background-color: #333;
+}
+
+/* Remove default focus outline... */
+input:focus,
+select:focus,
+button:focus,
+textarea:focus {
+  outline: none;
+}
+
+/* ...but add a less intrusive indicator */
+input:focus-visible,
+select:focus-visible,
+button:focus-visible,
+textarea:focus-visible {
+  box-shadow: inset 0 -2px 0 rgba(var(--bulb-accent-rgb), 0.16);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--bulb-placeholder);
+  opacity: 1;
+}
+
+/* Highlight interactible element when hovering */
+input:hover,
+select:hover,
+button:hover,
+textarea:hover {
+  background-color: rgba(var(--bulb-accent-rgb), 0.04);
+  color: var(--bulb-accent);
+  border-color: rgba(var(--bulb-accent-rgb), 0.06);
+}
+
+/* Fade when disabled */
+input[disabled],
+select[disabled],
+button[disabled],
+textarea[disabled] {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+select {
+  padding-right: 36px; /* room for chevron graphic */
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 18px 18px;
+  /* SVG chevron */
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%239aa3b2' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'></polyline></svg>");
+}
+
+/* Hide native dropdown arrow */
+select::-ms-expand { display: none; }
+
+#sb_search {
+  /* magnifier icon */
+  background-image:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%239aa3b2' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='6'></circle><line x1='21' y1='21' x2='16.65' y2='16.65'></line></svg>");
+  background-repeat: no-repeat;
+  background-position: left 12px center;
+  background-size: 18px 18px;
+
+  /* room for icon */
+  padding-left: 38px;
+
+  /* remove outer outline/border entirely */
+  outline: none;
+  margin-left: 0;
+}
+
+/* Hide select once overwritten as tablist */
+.bulb-select-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+/* If .bulb-select-hidden is used on a tab button, hide it */
+.bulb-tab.bulb-select-hidden {
+  display: none !important;
+}
+
+/* Tablist at top of sidebar */
+.bulb-tablist {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  gap: 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0;
+  margin: 0px 10px 0px 0px;
+  align-items: stretch;
+  background: transparent;
+  scroll-snap-type: x proximity;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar { height: 8px; width: 8px; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 4px; }
+
+/* Individual tabs at top of sidebar */
+.bulb-tab {
+  -webkit-appearance: none;
+  appearance: none;
+  border: none;
+  border-right: 1px solid var(--bulb-inset);
+  border-left: 1px solid var(--bulb-inset);
+  background: transparent;
+  color: var(--bulb-text);
+  padding: 8px 12px;
+  font-size: large;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  white-space: nowrap;
+  transition: background-color 120ms linear, color 120ms linear, border-color 120ms linear;
+  margin: 0;
+  border-radius: 0;
+  box-shadow: none;
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+}
+
+/* Hover: subtle tint and accent color */
+.bulb-tab:hover {
+  background-color: rgba(var(--bulb-accent-rgb), 0.06);
+  color: var(--bulb-accent);
+  border-color: rgba(var(--bulb-accent-rgb), 0.08);
+}
+
+/* Active / selected: understated fill and accent text */
+.bulb-tab[aria-selected="true"],
+.bulb-tab.active {
+  background-color: rgba(var(--bulb-accent-rgb), 0.12);
+  color: var(--bulb-accent);
+  border-color: rgba(var(--bulb-accent-rgb), 0.16);
+  font-weight: 600;
+}
+
+/* Focus-visible cues */
+.bulb-tab:focus:not(:focus-visible) { outline: none; }
+.bulb-tab:focus-visible { box-shadow: inset 0 -2px 0 rgba(var(--bulb-accent-rgb), 0.16); }
+
+/* Tablist focus-visible */
+.bulb-tablist:focus { outline: none; }
+.bulb-tablist:focus-visible { box-shadow: inset 0 -2px 0 rgba(var(--bulb-accent-rgb), 0.12); }
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+
+/* High-contrast fallback */
+@media (forced-colors: active) {
+  input, textarea, select, button {
+    outline: 2px solid WindowText;
+    box-shadow: none;
+  }
+}
+
+/* Media query for portrait orientation (mobile) */
+@media (orientation: portrait) {
+  .root {
+    flex-direction: column;
+  }
+
+  #sidebar {
+    min-width: 100%;
+    height: auto;
+    max-height: 60vh;
+  }
+
+  #sidebar * {
+    font-size: xx-large;
+  }
+
+  .sb_row * {
+    font-size: xxx-large;
+    height: 10vh;
+  }
+
+  .card-compact {
+    min-height: 15vh;
+    min-width: 100%;
+    flex-direction: row;
+    align-items: center;
+    justify-items: center;
+  }
+
+  .card-form > .row * {
+    min-height: 10vh;
+  }
+
+  .number-down, .number-up {
+    min-width: 20vw;
+    align-items: center;
+    justify-items: center;
+  }
+}
+
+/* Remove default arrows on number inputs, overwritten by number-style.js */
+input[type=number]::-webkit-inner-spin-button, 
+input[type=number]::-webkit-outer-spin-button { 
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  margin: 0; 
 }

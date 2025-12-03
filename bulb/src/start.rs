@@ -127,7 +127,6 @@ async fn add_sidebar() -> JsResult<()> {
 fn sidebar_html() -> String {
     let mut html = Html::new();
     html.div().class("sb_row");
-    html.label().r#for("sb_resource").text("Resource").end();
     html.select().id("sb_resource").end();
     html.input()
         .id("sb_config")
@@ -145,7 +144,7 @@ fn sidebar_html() -> String {
         .id("sb_search")
         .r#type("search")
         .size(16)
-        .attr("placeholder", "🔍");
+        .attr("placeholder", "Search resources...");
     html.select().id("sb_state").end();
     html.button()
         .id("sb_refresh")
