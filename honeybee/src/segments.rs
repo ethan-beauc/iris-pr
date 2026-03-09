@@ -1,6 +1,6 @@
 // segments.rs
 //
-// Copyright (C) 2019-2025  Minnesota Department of Transportation
+// Copyright (C) 2019-2026  Minnesota Department of Transportation
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -30,7 +30,7 @@ use std::path::{Path, PathBuf};
 use tokio_postgres::Row;
 
 /// Path to store .loam files
-const LOAM_PATH: &str = "/var/local/earthwyrm/loam";
+const LOAM_PATH: &str = "/var/local/wyrmcast/loam";
 
 /// Base segment scale factor
 const BASE_SCALE: f64 = 1.0 / 6.0;

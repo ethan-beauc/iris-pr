@@ -1,4 +1,4 @@
-# Example earthwyrm configuration for IRIS
+# Example wyrmcast configuration for IRIS
 #
 # Socket address and port to bind server
 bind_address: 127.0.0.1:3030

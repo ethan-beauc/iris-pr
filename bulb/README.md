@@ -7,9 +7,9 @@
 1. Install the current stable [Rust].
 2. Install the [IRIS] package
 3. Install the [honeybee] REST server
-4. Install and configure the [earthwyrm] map server
- - Use example config from `bulb/earthwyrm.muon`
- - Cache tiles with NGINX at `/var/cache/nginx/earthwyrm-iris`
+4. Install and configure the [wyrmcast] map server
+ - Use example config from `bulb/wyrmcast.muon`
+ - Cache tiles with NGINX at `/var/cache/nginx/wyrmcast-iris`
 
 Then, build the bulb front-end:
 
@@ -32,7 +32,7 @@ chown -R tms:tms /var/lib/iris/web/bulb/
 Now, use firefox or chrome to login at http://127.0.0.1/iris/
 
 
-[earthwyrm]: https://github.com/DougLau/earthwyrm/tree/master/earthwyrm-bin/
+[wyrmcast]: https://github.com/DougLau/earthwyrm/tree/master/wyrmcast/
 [honeybee]: https://github.com/mnit-rtmc/iris/tree/master/honeybee
 [iris]: https://mnit-rtmc.github.io/iris/installation.html
 [rust]: https://www.rust-lang.org/tools/install
