@@ -14,7 +14,7 @@ cidr.workspace = true
 console_error_panic_hook = "0.1"
 foldhash = "0.2"
 gift.workspace = true
-hatmil = "1.1.0"
+hatmil = "1.2.0"
 humantime = "2.1"
 js-sys = "0.3"
 log.workspace = true
@@ -42,7 +42,6 @@ features = [
 [dependencies.web-sys]
 version = "0.3"
 features = [
-  'console',
   'Blob',
   'CustomEvent',
   'Document',
