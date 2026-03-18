@@ -32,7 +32,7 @@ cfg_if::cfg_if! {
         use std::io::Write;
 
         fn hook(info: &panic::PanicHookInfo) {
-            let _ = writeln!(std::io::stderr(), "{}", info);
+            let _ = writeln!(std::io::stderr(), "{info}");
         }
     }
 }
