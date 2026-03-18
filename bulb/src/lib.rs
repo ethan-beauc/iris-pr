@@ -47,6 +47,7 @@ mod modem;
 mod monitorstyle;
 mod msgpattern;
 mod notes;
+mod panic;
 mod permission;
 mod rampmeter;
 mod rend;

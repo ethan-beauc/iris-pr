@@ -9,9 +9,9 @@ crate-type = ["cdylib"]
 
 [dependencies]
 base64 = "0.22"
+cfg-if = "1.0"
 chrono.workspace = true
 cidr.workspace = true
-console_error_panic_hook = "0.1"
 foldhash = "0.2"
 gift.workspace = true
 hatmil = "1.2.0"

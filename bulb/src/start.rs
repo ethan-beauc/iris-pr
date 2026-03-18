@@ -96,8 +96,7 @@ pub fn fly_map_item(fid: &str, lat: f64, lon: f64) {
 /// Application starting function
 #[wasm_bindgen(start)]
 pub async fn start() -> core::result::Result<(), JsError> {
-    // this should be debug only
-    console_error_panic_hook::set_once();
+    crate::panic::set_hook_once();
     wasm_log::init(wasm_log::Config::default().module_prefix("bulb"));
     log::info!("Started");
     add_listeners().await.unwrap_throw();
