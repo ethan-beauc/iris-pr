@@ -1,4 +1,7 @@
-// Copied from `console_error_panic_hook`
+// Copyright (C)  Nick Fitzgerald
+// License: Apache-2.0 OR MIT
+//
+// Copied from abandoned `console_error_panic_hook` crate
 
 cfg_if::cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
