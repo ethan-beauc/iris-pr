@@ -14,12 +14,12 @@
 //
 use crate::error::Result;
 use crate::files::AtomicFile;
-use mvt::{WebMercatorPos, Wgs84Pos};
 use pointy::{Pt, Transform};
 use resources::Res;
 use rosewood::BulkWriter;
 use rosewood::gis::Polygons;
 use serde::{Deserialize, Serialize, Serializer};
+use squarepeg::{WebMercatorPos, Wgs84Pos};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;

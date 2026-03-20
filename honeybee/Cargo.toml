@@ -16,19 +16,19 @@ futures.workspace = true
 headers = "0.4"
 heck = "0.5"
 http.workspace = true
-loam = "0.5"
+loam = "0.6"
 log.workspace = true
-mvt = "0.10"
 ntcip.workspace = true
 percent-encoding = "2"
-pointy = "0.7"
+pointy = "0.8"
 rendzina = { path = "../rendzina" }
 resin = { path = "../resin" }
 resources = { path = "../resources" }
-rosewood = "0.5"
+rosewood = "0.6"
 rustls = "0.23"
 serde.workspace = true
 serde_json.workspace = true
+squarepeg = "0.4"
 thiserror.workspace = true
 time = "0.3"
 tokio.workspace = true
