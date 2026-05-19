@@ -43,6 +43,7 @@ mod gps;
 mod helper;
 mod incident;
 mod item;
+mod joystick;
 mod lcs;
 mod lcsstate;
 mod lock;
