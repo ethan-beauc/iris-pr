@@ -99,9 +99,21 @@ async fn recall_extent(name: String) -> Result<()> {
     let extent_js = uri_one(Res::MapExtent, &name).get().await?;
     let extent = serde_wasm_bindgen::from_value::<MapExtent>(extent_js)?;
     let (zoom, lon, lat) = (extent.zoom, extent.lon, extent.lat);
-    map_pane.set_position(zoom.into(), lon, lat);
-    set_zoom_level(zoom.into());
-    Ok(())
+    let (ax, ay) = get_anchor();
+    map_pane
+        .with_anchor(ax, ay)
+        .set_position(zoom.into(), lon, lat);
+    do_handle_zoom(zoom.into()).await
+}
+
+/// Gets the map anchor based on the sidebar side
+pub fn get_anchor() -> (f64, f64) {
+    if let Some(side_pane) = Doc::get().opt_elem::<HtmlElement>("side-pane")
+        && side_pane.class_list().contains("left")
+    {
+        return (1.0 - ANCHOR_X, ANCHOR_Y);
+    }
+    (ANCHOR_X, ANCHOR_Y)
 }
 
 /// Handle a `click` event on the map
@@ -149,7 +161,8 @@ pub fn present_item(res: Res, name: &str, lon: f64, lat: f64) {
 /// Present item on map
 async fn do_present_item(zoom: u32, lon: f64, lat: f64) -> Result<()> {
     if let Some(map_pane) = MapPane::get(MAP_PANE) {
-        map_pane.set_position(zoom, lon, lat);
+        let (ax, ay) = get_anchor();
+        map_pane.with_anchor(ax, ay).set_position(zoom, lon, lat);
         set_zoom_level(zoom);
         update_layers_all(zoom).await?;
     }
@@ -249,17 +262,15 @@ async fn add_extent_buttons() -> Result<()> {
     let doc = Doc::get();
     let extents: Vec<MapExtent> =
         serde_wasm_bindgen::from_value(uri_all(Res::MapExtent).get().await?)?;
-    let div = doc.elem::<HtmlElement>("map-extents")?;
-    let default = doc.0.create_element("button")?;
-    default.set_id("default-extent");
-    default.set_text_content(Some("Default"));
-    div.append_child(&default)?;
+    let extents_container = doc.elem::<HtmlElement>("map-extents")?;
+    let mut tree = Tree::new();
+    let mut default = tree.root::<html::Button>();
+    default.id("default-extent").cdata("Default").close();
     for extent in &extents {
-        let b = doc.0.create_element("button")?;
-        b.set_id(&extent.name);
-        b.set_text_content(Some(&extent.name));
-        div.append_child(&b)?;
+        let mut b = tree.root::<html::Button>();
+        b.id(&extent.name).cdata(&extent.name).close();
     }
+    extents_container.set_inner_html(&String::from(tree));
     Ok(())
 }
 

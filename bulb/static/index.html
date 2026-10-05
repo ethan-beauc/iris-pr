@@ -57,7 +57,7 @@
     </div>
     <div id="map-pane"></div>
     <div id="map-menu" class="no-display"></div>
-    <div id="map-controls">
+    <div id="map-controls" class="left">
       <div id="layer-zoom">
         <button popovertarget="layer-popover">🞁 Layers</button>
       </div>
@@ -115,7 +115,7 @@
         </li>
       </menu>
     </div>
-    <div id="side-pane">
+    <div id="side-pane" class="right">
       <div id="sidebar">
         <div class="sb_row">
           <label for="sb-resource">Resource</label>
@@ -294,8 +294,10 @@
         </div>
       </div>
       <div id="divider">
-          <button id="hide_sidebar" type="button">🞂</button>
-          <button id="show_sidebar" type="button" disabled>🞀</button>
+          <button id="hide_sidebar" title="Hide sidebar" type="button">🞂</button>
+          <button id="show_sidebar" title="Show sidebar" type="button" class="no-display">🞀</button>
+          <button id="left_sidebar" title="Dock sidebar on left" type="button">⏮</button>
+          <button id="right_sidebar" title="Dock sidebar on right" type="button" class="no-display">⏭</button>
       </div>
     </div>
   </body>
