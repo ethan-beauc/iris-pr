@@ -300,13 +300,31 @@ menu li {
 }
 #map-extents {
   border-left: 4px double #677;
-  overflow-x: scroll;
+  anchor-name: --extents-anchor;
 }
 #map-extents button {
-  border-left: 2px solid #677;
+  text-align: start;
 }
-#map-extents button:first-child {
-  border-left: none;
+#map-extents-dynamic {
+  display: none;
+  flex-direction: column-reverse;
+
+  position: fixed;
+  position-anchor: --extents-anchor;
+  bottom: anchor(top);
+  left: anchor(left);
+  min-width: anchor-size(width);
+  max-height: 90%;
+  overflow-y: scroll;
+
+  background-color: #899;
+  border: 1px solid white;
+}
+#map-extents-dynamic button {
+  padding-left: calc(0.3rem + 3px);
+}
+#map-extents:hover #map-extents-dynamic {
+  display: flex;
 }
 
 #map-menu {
@@ -322,6 +340,8 @@ menu li {
   position-area: top;
   border: none;
   padding: 0;
+  overflow-y: scroll;
+  max-height: 90%;
 }
 #layer-menu li:first-child {
   font-weight: bold;
@@ -357,6 +377,9 @@ menu li {
 #side-pane.left {
   flex-direction: row;
 }
+#side-pane:has(#sidebar.hidden) {
+  width: fit-content;
+}
 #divider {
   display: none;
   max-width: min-content;
@@ -369,6 +392,13 @@ menu li {
   margin: 0;
   margin-top: 0.5rem;
   padding: 0;
+}
+#sidebar.show ~ #divider > #show_sidebar,
+#sidebar.hidden ~ #divider > #hide_sidebar,
+#side-pane.left #left_sidebar,
+#side-pane.right #right_sidebar
+{
+  display: none;
 }
 #sidebar {
   flex: 1 1;

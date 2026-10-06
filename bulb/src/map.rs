@@ -108,6 +108,11 @@ async fn recall_extent(name: String) -> Result<()> {
 
 /// Gets the map anchor based on the sidebar side
 pub fn get_anchor() -> (f64, f64) {
+    if let Some(sidebar) = Doc::get().opt_elem::<HtmlElement>("sidebar")
+        && sidebar.class_list().contains("hidden")
+    {
+        return (0.5, ANCHOR_Y);
+    }
     if let Some(side_pane) = Doc::get().opt_elem::<HtmlElement>("side-pane")
         && side_pane.class_list().contains("left")
     {
@@ -262,10 +267,8 @@ async fn add_extent_buttons() -> Result<()> {
     let doc = Doc::get();
     let extents: Vec<MapExtent> =
         serde_wasm_bindgen::from_value(uri_all(Res::MapExtent).get().await?)?;
-    let extents_container = doc.elem::<HtmlElement>("map-extents")?;
+    let extents_container = doc.elem::<HtmlElement>("map-extents-dynamic")?;
     let mut tree = Tree::new();
-    let mut default = tree.root::<html::Button>();
-    default.id("default-extent").cdata("Default").close();
     for extent in &extents {
         let mut b = tree.root::<html::Button>();
         b.id(&extent.name).cdata(&extent.name).close();

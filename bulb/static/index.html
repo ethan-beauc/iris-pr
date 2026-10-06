@@ -61,7 +61,10 @@
       <div id="layer-zoom">
         <button popovertarget="layer-popover">🞁 Layers</button>
       </div>
-      <div id="map-extents"></div>
+      <div id="map-extents">
+        <button id="default-extent">Default Map Extent</button>
+        <div id="map-extents-dynamic"></div>
+      </div>
     </div>
     <div id="layer-popover" popover>
       <menu id="layer-menu">
@@ -116,7 +119,7 @@
       </menu>
     </div>
     <div id="side-pane" class="right">
-      <div id="sidebar">
+      <div id="sidebar" class="show">
         <div class="sb_row">
           <label for="sb-resource">Resource</label>
           <select id="sb-resource">
@@ -295,9 +298,9 @@
       </div>
       <div id="divider">
           <button id="hide_sidebar" title="Hide sidebar" type="button">🞂</button>
-          <button id="show_sidebar" title="Show sidebar" type="button" class="no-display">🞀</button>
+          <button id="show_sidebar" title="Show sidebar" type="button">🞀</button>
           <button id="left_sidebar" title="Dock sidebar on left" type="button">⏮</button>
-          <button id="right_sidebar" title="Dock sidebar on right" type="button" class="no-display">⏭</button>
+          <button id="right_sidebar" title="Dock sidebar on right" type="button">⏭</button>
       </div>
     </div>
   </body>
